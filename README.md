@@ -1,0 +1,77 @@
+# Calipers
+
+CLI for **Excel-golden generation** and **Excel-vs-engine verification**.
+
+Open an `.xlsx` in desktop Microsoft Excel, save it again, and record sidecar metadata. The Excel rewrite is the golden: later engine output is compared to that golden, not to the original file.
+
+v1 is **Windows-only**. Goldens are produced via Excel COM (`Excel.Application`). Do **not** generate goldens on macOS — Excel for Mac serializes OOXML differently.
+
+This repository is the verification tool and its init corpus. It is not a spreadsheet engine.
+
+## Requirements
+
+- Go 1.22+
+- For `excel-save`: Windows + Microsoft Excel (desktop)
+
+Off Windows, `excel-save` exits with:
+
+```
+calipers: excel-save requires Windows + Excel (COM)
+```
+
+`version` and `-h` / `--help` work on any OS.
+
+## Build
+
+From the repo root:
+
+```bash
+go build -o calipers ./cmd/calipers
+go test ./...
+```
+
+## Commands
+
+```bash
+# Open input in Excel, Save As xlsx to output (Windows + Excel COM)
+calipers excel-save <input.xlsx> <output.xlsx>
+
+# Tool version (on Windows, also prints Excel version when COM works)
+calipers version
+
+# Usage
+calipers -h
+```
+
+Example:
+
+```bash
+calipers excel-save verification/init_files/tier_a_simple.xlsx golden.xlsx
+```
+
+A successful save also writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, UTC `generatedAt`).
+
+CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
+
+## Init corpus
+
+Inputs live in [`verification/init_files/`](verification/init_files/). **91 files** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+
+| Prefix | Role |
+|--------|------|
+| `tier_a_` | Engine claims support (values, formulas, styles, sheets, merges, names, freeze, unicode, themes, number formats). First goldens. |
+| `tier_b_` | Remaining work (charts, pivot, tables/autofilter, CF, validation, comments, drawings, hyperlinks, protection, print). Goldens still useful: Excel keeps these, an engine may drop them. |
+| `tier_c_` | Later / hostile (strict OOXML, password, XML bomb, huge stress, ATP, OLE embed). **Do not** run in the default golden pass. |
+
+A default golden pass skips hostile files such as `tier_c_xmlbomb.xlsx` and password-encrypted workbooks (`tier_c_password.xlsx`).
+
+## Host
+
+`excel-save` drives Excel through COM:
+
+- `Excel.Application` on an STA thread
+- `DisplayAlerts` / `Visible` off
+- timeout plus started-PID cleanup
+- `Workbooks.Open` then `SaveAs` xlsx format 51
+
+Goldens must be generated on **Windows Excel via COM**. macOS Excel is not used.

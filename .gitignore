@@ -1,0 +1,24 @@
+# Build outputs
+/calipers
+/dist/
+
+# Go
+*.exe
+*.test
+*.out
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# macOS
+.DS_Store
+
+# Local scratch
+*.log
+tmp/
+
+# Grok worktrees (not part of this tool)
+/worktrees/
