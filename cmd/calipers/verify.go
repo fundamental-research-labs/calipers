@@ -6,35 +6,46 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/fundamental-research-labs/calipers/internal/cases"
 	"github.com/fundamental-research-labs/calipers/internal/compare"
-	"github.com/fundamental-research-labs/calipers/internal/mog"
+	enginehost "github.com/fundamental-research-labs/calipers/internal/engine"
+	"github.com/fundamental-research-labs/calipers/internal/excel"
 )
 
-// engine is the mog load/export surface used by verify.
+// engine is the OpenSave/RunScript surface shared by Excel and an external binary.
 type engine interface {
 	OpenSave(inputPath, outputPath string) error
 	RunScript(inputPath, scriptPath, outputPath string) error
 }
 
-var newVerifyEngine = func() engine { return mog.NewHost() }
+var (
+	newExcelHost  = func() engine { return excel.NewHost() }
+	newBinaryHost = func(path string) engine { return enginehost.New(path) }
+)
 
-const verifyUsage = `calipers verify [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+const verifyUsage = `calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
 
-  Load each case in mog, run Office.js when present and non-empty,
-  export a result xlsx (not the golden), and semantically compare
-  to the case golden.
+  For each case: run the engine (load init.xlsx, Office.js if present and
+  non-empty), export a result xlsx (not the golden), semantically compare
+  to the committed Excel golden.
+
+  --engine excel    Excel COM host (Windows)
+  --engine PATH     external binary:  save <in> <out>
+                                      run  <in> <script.js> <out>
 
   Default walk is tier_a and tier_b (skip tier_c hostiles).
+  --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
 `
 
 func verifyCmd(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	engineSpec := fs.String("engine", "", "engine binary path, or 'excel'")
 	casesDir := fs.String("cases-dir", cases.DirName, "verification cases directory")
-	outDir := fs.String("out-dir", "", "directory for mog exports (never the case golden)")
+	outDir := fs.String("out-dir", "", "directory for engine exports (never the case golden)")
 	var caseIDs []string
 	fs.Func("case", "case id to run (repeatable or comma-separated; default: tier_a and tier_b)", func(s string) error {
 		for _, id := range strings.Split(s, ",") {
@@ -55,12 +66,74 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	if fs.NArg() > 1 {
-		return fmt.Errorf("usage: calipers verify [--cases-dir DIR] [--out-dir DIR] [--case ID]...")
+		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...")
 	}
 	if fs.NArg() == 1 {
 		*casesDir = fs.Arg(0)
 	}
-	return runVerify(newVerifyEngine(), *casesDir, caseIDs, *outDir, os.Stdout)
+	host, err := hostFromSpec(*engineSpec)
+	if err != nil {
+		return err
+	}
+	return runVerify(host, *casesDir, caseIDs, *outDir, os.Stdout)
+}
+
+func hostFromSpec(spec string) (engine, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		spec = defaultEngineSpec()
+	}
+	switch spec {
+	case "":
+		return nil, fmt.Errorf("verify requires --engine <path|excel> (or MOG_BIN / vendor/mog artefact)")
+	case "excel":
+		return newExcelHost(), nil
+	default:
+		return newBinaryHost(spec), nil
+	}
+}
+
+func defaultEngineSpec() string {
+	if b := os.Getenv("MOG_BIN"); b != "" {
+		return b
+	}
+	if b := os.Getenv("ENGINE"); b != "" {
+		return b
+	}
+	return findVendorMog()
+}
+
+func findVendorMog() string {
+	name := "mog"
+	if runtime.GOOS == "windows" {
+		name = "mog.exe"
+	}
+	var starts []string
+	if wd, err := os.Getwd(); err == nil {
+		starts = append(starts, wd)
+	}
+	seen := map[string]bool{}
+	for _, start := range starts {
+		for dir := start; ; dir = filepath.Dir(dir) {
+			if seen[dir] {
+				break
+			}
+			seen[dir] = true
+			for _, p := range []string{
+				filepath.Join(dir, "vendor", "mog", "target-native", "debug", name),
+				filepath.Join(dir, "vendor", "mog", "target-native", "release", name),
+			} {
+				if st, err := os.Stat(p); err == nil && !st.IsDir() {
+					return p
+				}
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+		}
+	}
+	return ""
 }
 
 type caseOutcome struct {

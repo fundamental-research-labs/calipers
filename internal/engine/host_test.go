@@ -1,4 +1,4 @@
-package mog
+package engine
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestRunScriptRequiresPath(t *testing.T) {
-	h := NewHost()
+	h := New("engine")
 	if err := h.RunScript("in.xlsx", "", "out.xlsx"); err == nil {
 		t.Fatal("empty script should error")
 	}
@@ -22,14 +22,13 @@ func TestOpenSaveRequiresXlsx(t *testing.T) {
 	if err := os.WriteFile(in, []byte("pk"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHost()
-	h.Bin = "mog"
+	h := New("engine")
 	if err := h.OpenSave(in, filepath.Join(dir, "out.xls")); err == nil || !strings.Contains(err.Error(), ".xlsx") {
 		t.Fatalf("error = %v, want .xlsx", err)
 	}
 }
 
-func TestOpenSaveInvokesCLIWithoutScript(t *testing.T) {
+func TestOpenSaveArgv(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in.xlsx")
 	out := filepath.Join(dir, "out.xlsx")
@@ -44,20 +43,19 @@ func TestOpenSaveInvokesCLIWithoutScript(t *testing.T) {
 	}
 	defer func() { execCommandContext = old }()
 
-	h := NewHost()
-	h.Bin = "mog"
+	h := New("/bin/engine")
 	if err := h.OpenSave(in, out); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 5 || got[1] != "--input" || got[3] != "--output" {
-		t.Fatalf("args = %v, want mog --input in --output out", got)
+	if len(got) != 4 || got[0] != "/bin/engine" || got[1] != "save" {
+		t.Fatalf("argv = %v, want engine save in out", got)
 	}
-	if filepath.Base(got[4]) != "out.xlsx" {
-		t.Fatalf("export path = %v", got)
+	if filepath.Base(got[2]) != "in.xlsx" || filepath.Base(got[3]) != "out.xlsx" {
+		t.Fatalf("paths = %v", got)
 	}
 }
 
-func TestRunScriptPassesScriptAfterExportFlags(t *testing.T) {
+func TestRunScriptArgv(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in.xlsx")
 	out := filepath.Join(dir, "out.xlsx")
@@ -76,35 +74,14 @@ func TestRunScriptPassesScriptAfterExportFlags(t *testing.T) {
 	}
 	defer func() { execCommandContext = old }()
 
-	h := NewHost()
-	h.Bin = "mog"
+	h := New("/bin/engine")
 	if err := h.RunScript(in, script, out); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 5 || got[0] != "--input" || got[2] != "--output" {
-		t.Fatalf("args = %v", got)
+	if len(got) != 4 || got[0] != "run" {
+		t.Fatalf("argv = %v, want run in script out", got)
 	}
-	if filepath.Base(got[3]) != "out.xlsx" {
-		t.Fatalf("export = %s", got[3])
-	}
-	if filepath.Base(got[4]) != "script.js" {
-		t.Fatalf("script not passed: %v", got)
-	}
-}
-
-func TestIsMogOSS(t *testing.T) {
-	dir := t.TempDir()
-	if isMogOSS(dir) {
-		t.Fatal("empty dir is not OSS mog")
-	}
-	office := filepath.Join(dir, "compute", "officejs")
-	if err := os.MkdirAll(office, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(office, "Cargo.toml"), []byte("[package]\nname = \"mog\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if !isMogOSS(dir) {
-		t.Fatal("want OSS mog crate at compute/officejs")
+	if filepath.Base(got[1]) != "in.xlsx" || filepath.Base(got[2]) != "script.js" || filepath.Base(got[3]) != "out.xlsx" {
+		t.Fatalf("argv = %v", got)
 	}
 }

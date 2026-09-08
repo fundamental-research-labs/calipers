@@ -150,8 +150,38 @@ func TestRunVerifyHelp(t *testing.T) {
 }
 
 func TestRunVerifyEmptyDir(t *testing.T) {
-	if err := run([]string{"verify", "--cases-dir", t.TempDir()}); err != nil {
+	if err := run([]string{"verify", "--engine", "dummy", "--cases-dir", t.TempDir()}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestHostFromSpecExcel(t *testing.T) {
+	h, err := hostFromSpec("excel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.OpenSave("in.xlsx", "out.xlsx"); err == nil {
+		t.Fatal("excel host off Windows should error on OpenSave")
+	}
+}
+
+func TestHostFromSpecRequiresEngine(t *testing.T) {
+	oldBin := os.Getenv("MOG_BIN")
+	oldEng := os.Getenv("ENGINE")
+	_ = os.Unsetenv("MOG_BIN")
+	_ = os.Unsetenv("ENGINE")
+	defer func() {
+		_ = os.Setenv("MOG_BIN", oldBin)
+		_ = os.Setenv("ENGINE", oldEng)
+	}()
+	// Force no vendor artefact by using a temp cwd... hostFromSpec("") uses cwd.
+	// An explicit empty spec with no env still may find vendor/mog; that's ok
+	// if the artefact exists. Require error only when defaultEngineSpec is empty.
+	if defaultEngineSpec() != "" {
+		t.Skip("vendor/mog or MOG_BIN is present")
+	}
+	if _, err := hostFromSpec(""); err == nil {
+		t.Fatal("expected missing --engine error")
 	}
 }
 
@@ -159,9 +189,9 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
 	writeVerifyCase(t, root, "tier_a_cli", "hello", nil)
 	fake := &fakeEngine{}
-	old := newVerifyEngine
-	newVerifyEngine = func() engine { return fake }
-	defer func() { newVerifyEngine = old }()
+	old := newBinaryHost
+	newBinaryHost = func(path string) engine { return fake }
+	defer func() { newBinaryHost = old }()
 
 	var buf bytes.Buffer
 	r, w, err := os.Pipe()
@@ -170,7 +200,7 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 	}
 	oldStdout := os.Stdout
 	os.Stdout = w
-	err = run([]string{"verify", "--cases-dir", root, "--out-dir", outDir, "--case", "tier_a_cli"})
+	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "tier_a_cli"})
 	_ = w.Close()
 	os.Stdout = oldStdout
 	out, _ := io.ReadAll(r)

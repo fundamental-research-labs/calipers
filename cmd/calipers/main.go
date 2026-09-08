@@ -3,7 +3,7 @@
 //
 //	calipers excel-save <input.xlsx> <output.xlsx>
 //	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
-//	calipers verify [--case ID]...
+//	calipers verify --engine <path|excel> [--case ID]...
 //	calipers version
 package main
 
@@ -79,10 +79,12 @@ Commands:
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
       then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
 
-  verify [--cases-dir DIR] [--out-dir DIR] [--case ID]...
-      Load each case in mog, run Office.js when present and non-empty,
-      export a result xlsx (not the golden), and semantically compare
-      to the case golden. Default walk is tier_a and tier_b (skip tier_c).
+  verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+      Run each case in an engine (Excel or an external binary) and
+      semantically compare the export to the committed Excel golden.
+      Binary argv: save <in.xlsx> <out.xlsx>
+                   run  <in.xlsx> <script.js> <out.xlsx>
+      Default walk is tier_a and tier_b (skip tier_c).
 
   version
       Print calipers version. On Windows, also print Excel version
