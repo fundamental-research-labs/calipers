@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -30,6 +31,9 @@ func TestRunHelp(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("excel-run")) || !bytes.Contains(out, []byte("excel-save")) {
 		t.Fatalf("help must list excel-run and excel-save:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("excel-save-pass")) {
+		t.Fatalf("help must list excel-save-pass:\n%s", out)
 	}
 	if err := run([]string{"--help"}); err != nil {
 		t.Fatalf("run(--help) = %v", err)
@@ -57,8 +61,8 @@ func TestRunExcelSaveUsage(t *testing.T) {
 }
 
 func TestRunExcelSaveOffWindows(t *testing.T) {
-	if os.Getenv("GOOS_FORCE") == "windows" {
-		t.Skip("forced windows")
+	if runtime.GOOS == "windows" || os.Getenv("GOOS_FORCE") == "windows" {
+		t.Skip("windows host implements excel-save")
 	}
 	err := run([]string{"excel-save", "in.xlsx", "out.xlsx"})
 	if err == nil {
@@ -81,8 +85,8 @@ func TestRunExcelRunUsage(t *testing.T) {
 }
 
 func TestRunExcelRunOffWindows(t *testing.T) {
-	if os.Getenv("GOOS_FORCE") == "windows" {
-		t.Skip("forced windows")
+	if runtime.GOOS == "windows" || os.Getenv("GOOS_FORCE") == "windows" {
+		t.Skip("windows host implements excel-run")
 	}
 	err := run([]string{"excel-run", "in.xlsx", "script.js", "out.xlsx"})
 	if err == nil {

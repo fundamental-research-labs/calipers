@@ -90,6 +90,21 @@ func DefaultPass(all []Case) []Case {
 	return out
 }
 
+// OpenSavePass is the v1 excel-save golden set: DefaultPass minus cases that
+// have Office.js to run. Scripted goldens are produced with excel-run, not
+// by load+save. tier_c stays excluded.
+func OpenSavePass(all []Case) []Case {
+	pass := DefaultPass(all)
+	out := make([]Case, 0, len(pass))
+	for _, c := range pass {
+		if c.RunScript() {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 func parseTier(name string) (Tier, bool) {
 	m := tierName.FindStringSubmatch(name)
 	if m == nil {

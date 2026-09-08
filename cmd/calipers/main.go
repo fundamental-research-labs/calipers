@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fundamental-research-labs/calipers/internal/cases"
 	"github.com/fundamental-research-labs/calipers/internal/excel"
 	"github.com/fundamental-research-labs/calipers/internal/golden"
 )
@@ -35,6 +36,17 @@ func run(args []string) error {
 			return fmt.Errorf("usage: calipers excel-save <input.xlsx> <output.xlsx>")
 		}
 		return excelSave(args[1], args[2])
+	case "excel-save-pass":
+		root := cases.DirName
+		switch len(args) {
+		case 1:
+			// default verification/cases
+		case 2:
+			root = args[1]
+		default:
+			return fmt.Errorf("usage: calipers excel-save-pass [cases-dir]")
+		}
+		return excelSavePass(root)
 	case "excel-run":
 		if len(args) != 4 {
 			return fmt.Errorf("usage: calipers excel-run <input.xlsx> <script.js> <output.xlsx>")
@@ -53,6 +65,11 @@ Commands:
   excel-save <input.xlsx> <output.xlsx>
       Open input in Excel and Save As xlsx to output (load+save, no Office.js).
       Requires Windows + Microsoft Excel. Off Windows this command errors.
+
+  excel-save-pass [cases-dir]
+      Run excel-save over the default open+save pass (tier_a and tier_b,
+      skip Office.js cases and tier_c). Writes golden.xlsx + sidecar in
+      each case directory. Default cases-dir is verification/cases.
 
   excel-run <input.xlsx> <script.js> <output.xlsx>
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
@@ -73,7 +90,10 @@ func printUsage() {
 }
 
 func excelSave(inputPath, outputPath string) error {
-	host := excel.NewHost()
+	return excelSaveHost(excel.NewHost(), inputPath, outputPath)
+}
+
+func excelSaveHost(host excel.Host, inputPath, outputPath string) error {
 	if err := host.OpenSave(inputPath, outputPath); err != nil {
 		return err
 	}
@@ -81,13 +101,21 @@ func excelSave(inputPath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("excel info after save: %w", err)
 	}
+	if info.ID != excel.HostID {
+		return fmt.Errorf("refuse golden host %q (want %s)", info.ID, excel.HostID)
+	}
 	meta := sidecarMeta(info, inputPath, "")
 	if err := golden.Write(outputPath, meta); err != nil {
 		return err
 	}
-	fmt.Printf("wrote %s\n", outputPath)
-	fmt.Printf("wrote %s\n", golden.PathFor(outputPath))
+	printf("wrote %s\n", outputPath)
+	printf("wrote %s\n", golden.PathFor(outputPath))
 	return nil
+}
+
+func printf(format string, args ...any) {
+	fmt.Printf(format, args...)
+	_ = os.Stdout.Sync()
 }
 
 func excelRun(inputPath, scriptPath, outputPath string) error {

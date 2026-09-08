@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/fundamental-research-labs/calipers/internal/excel"
+	"github.com/fundamental-research-labs/calipers/internal/golden"
 )
 
 func TestLoadMissingScriptIsLoadSave(t *testing.T) {
@@ -96,6 +99,36 @@ func TestLoadNonEmptyScript(t *testing.T) {
 	}
 }
 
+func TestOpenSavePassSkipsScriptedAndTierC(t *testing.T) {
+	root := t.TempDir()
+	js := "Excel.run(async (ctx) => {});"
+	writeCase(t, root, "tier_a_one", "pk", nil)
+	writeCase(t, root, "tier_a_js", "pk", &js)
+	writeCase(t, root, "tier_b_two", "pk", nil)
+	writeCase(t, root, "tier_c_bomb", "pk", nil)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pass := OpenSavePass(all)
+	if len(pass) != 2 {
+		t.Fatalf("open+save pass len=%d, want 2", len(pass))
+	}
+	ids := map[string]bool{}
+	for _, c := range pass {
+		ids[c.ID] = true
+		if c.Tier == TierC {
+			t.Fatalf("open+save pass included hostile %s", c.ID)
+		}
+		if c.RunScript() {
+			t.Fatalf("open+save pass included scripted %s", c.ID)
+		}
+	}
+	if !ids["tier_a_one"] || !ids["tier_b_two"] {
+		t.Fatalf("open+save pass ids = %v", ids)
+	}
+}
+
 func TestDefaultPassExcludesTierC(t *testing.T) {
 	root := t.TempDir()
 	writeCase(t, root, "tier_a_one", "pk", nil)
@@ -155,8 +188,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 92 {
-		t.Fatalf("real corpus: got %d cases, want 92", len(all))
+	if len(all) != 90 {
+		t.Fatalf("real corpus: got %d cases, want 90", len(all))
 	}
 	var nA, nB, nC int
 	for _, c := range all {
@@ -179,12 +212,12 @@ func TestLoadRealCorpus(t *testing.T) {
 		if filepath.Base(c.InitPath) != InitFile {
 			t.Errorf("%s: init must be %s, got %s", c.ID, InitFile, c.InitPath)
 		}
-		if _, err := os.Stat(c.GoldenPath); err == nil {
-			t.Errorf("%s: golden xlsx must not live among case inputs yet: %s", c.ID, c.GoldenPath)
+		if filepath.Base(c.GoldenPath) != GoldenFile {
+			t.Errorf("%s: golden dest must be %s, got %s", c.ID, GoldenFile, c.GoldenPath)
 		}
 	}
-	if nA != 58 || nB != 26 || nC != 8 {
-		t.Fatalf("tier counts a=%d b=%d c=%d, want 58/26/8", nA, nB, nC)
+	if nA != 57 || nB != 25 || nC != 8 {
+		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/25/8", nA, nB, nC)
 	}
 
 	var scripted []Case
@@ -249,6 +282,76 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	if len(pass) != len(all)-nC {
 		t.Fatalf("default pass %d vs all-c %d", len(pass), len(all)-nC)
+	}
+
+	openSave := OpenSavePass(all)
+	if len(openSave) != nA+nB-len(scripted) {
+		t.Fatalf("open+save pass len=%d, want %d (default minus scripted)", len(openSave), nA+nB-len(scripted))
+	}
+	for _, c := range openSave {
+		if c.RunScript() {
+			t.Errorf("open+save pass included scripted %s", c.ID)
+		}
+		if c.Tier == TierC {
+			t.Errorf("open+save pass included hostile %s", c.ID)
+		}
+	}
+}
+
+func TestCommittedOpenSaveGoldens(t *testing.T) {
+	root := repoCasesDir(t)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var first golden.Meta
+	var firstID string
+	for i, c := range OpenSavePass(all) {
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil {
+			t.Errorf("%s: missing golden.xlsx", c.ID)
+			continue
+		}
+		if st.Size() == 0 {
+			t.Errorf("%s: golden.xlsx is empty", c.ID)
+		}
+		m, err := golden.Read(c.GoldenPath)
+		if err != nil {
+			t.Errorf("%s: %v", c.ID, err)
+			continue
+		}
+		if m.Host != excel.HostID {
+			t.Errorf("%s: host %q, want %s", c.ID, m.Host, excel.HostID)
+		}
+		if m.Script != "" {
+			t.Errorf("%s: load+save golden must omit script, got %q", c.ID, m.Script)
+		}
+		if m.Input != InitFile {
+			t.Errorf("%s: input %q, want %s", c.ID, m.Input, InitFile)
+		}
+		if m.ExcelVersion == "" || m.ExcelBuild == "" {
+			t.Errorf("%s: missing Excel version/build in meta", c.ID)
+		}
+		if i == 0 {
+			first = m
+			firstID = c.ID
+			continue
+		}
+		if m.Host != first.Host || m.ExcelVersion != first.ExcelVersion || m.ExcelBuild != first.ExcelBuild {
+			t.Errorf("mixed excel goldens: %s is host=%s version=%s build=%s; %s is host=%s version=%s build=%s",
+				c.ID, m.Host, m.ExcelVersion, m.ExcelBuild,
+				firstID, first.Host, first.ExcelVersion, first.ExcelBuild)
+		}
+	}
+
+	for _, c := range all {
+		if !c.RunScript() && c.Tier != TierC {
+			continue
+		}
+		if _, err := os.Stat(c.GoldenPath); err == nil {
+			t.Errorf("%s: must not have an open+save golden (scripted or tier_c)", c.ID)
+		}
 	}
 }
 
