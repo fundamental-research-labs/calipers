@@ -1,7 +1,9 @@
 package cases
 
 import (
+	"archive/zip"
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -346,13 +348,97 @@ func TestCommittedOpenSaveGoldens(t *testing.T) {
 	}
 
 	for _, c := range all {
-		if !c.RunScript() && c.Tier != TierC {
+		if c.Tier != TierC {
 			continue
 		}
 		if _, err := os.Stat(c.GoldenPath); err == nil {
-			t.Errorf("%s: must not have an open+save golden (scripted or tier_c)", c.ID)
+			t.Errorf("%s: must not have a golden (tier_c)", c.ID)
 		}
 	}
+}
+
+func TestCommittedScriptedGolden(t *testing.T) {
+	root := repoCasesDir(t)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var scripted []Case
+	for _, c := range all {
+		if c.RunScript() {
+			scripted = append(scripted, c)
+		}
+	}
+	if len(scripted) != 1 || scripted[0].ID != "tier_a_simple_set_a1" {
+		t.Fatalf("scripted = %v, want only tier_a_simple_set_a1", scripted)
+	}
+	c := scripted[0]
+
+	for _, pass := range OpenSavePass(all) {
+		if pass.ID == c.ID {
+			t.Fatal("OpenSavePass must still skip the Office.js case")
+		}
+	}
+
+	st, err := os.Stat(c.GoldenPath)
+	if err != nil {
+		t.Fatalf("committed scripted golden missing: %v", err)
+	}
+	if st.Size() == 0 {
+		t.Fatal("committed scripted golden is empty")
+	}
+	m, err := golden.Read(c.GoldenPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Host != excel.HostID {
+		t.Fatalf("host %q, want %s", m.Host, excel.HostID)
+	}
+	if m.Script != ScriptFile {
+		t.Fatalf("script %q, want %s", m.Script, ScriptFile)
+	}
+	if m.Input != InitFile {
+		t.Fatalf("input %q, want %s", m.Input, InitFile)
+	}
+	if m.ExcelVersion == "" || m.ExcelBuild == "" {
+		t.Fatal("missing Excel version/build in scripted sidecar")
+	}
+	if m.GeneratedAt == "" {
+		t.Fatal("missing generatedAt")
+	}
+
+	if !xlsxContains(t, c.GoldenPath, "calipers") {
+		t.Fatal("scripted golden.xlsx must contain the Office.js value calipers")
+	}
+	if xlsxContains(t, c.InitPath, "calipers") {
+		t.Fatal("tier_a_simple_set_a1 init.xlsx must not already contain calipers")
+	}
+}
+
+func xlsxContains(t *testing.T, path, needle string) bool {
+	t.Helper()
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatalf("zip %s: %v", path, err)
+	}
+	defer r.Close()
+	want := []byte(needle)
+	for _, f := range r.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func writeCase(t *testing.T, root, id, init string, script *string) {

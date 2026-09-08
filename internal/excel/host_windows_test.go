@@ -5,12 +5,30 @@ package excel
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestWindowsAvailableMatchesProgID(t *testing.T) {
 	h := NewHost()
 	_ = h.Available() // must not panic without Excel
+}
+
+func TestExcelExecutableFindsInstalledExcel(t *testing.T) {
+	h := NewHost()
+	if !h.Available() {
+		t.Skip("Excel.Application ProgID not registered")
+	}
+	path, err := excelExecutable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("excel.exe %q: %v", path, err)
+	}
+	if !strings.EqualFold(filepath.Base(path), "excel.exe") {
+		t.Fatalf("not excel.exe: %q", path)
+	}
 }
 
 func TestWindowsOpenSave(t *testing.T) {

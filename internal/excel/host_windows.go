@@ -8,8 +8,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,7 @@ import (
 	ole "github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 // xlOpenXMLWorkbook is Excel's FileFormat for .xlsx (no macros).
@@ -84,29 +87,31 @@ func (h *windowsHost) RunScript(inputPath, scriptPath, outputPath string) error 
 		return fmt.Errorf("script is empty; use excel-save for load+save")
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return fmt.Errorf("add-in server: %w", err)
-	}
-	baseURL := "http://" + ln.Addr().String()
 	job := newJobServer(string(scriptBytes))
-	httpSrv := &http.Server{Handler: job}
-	go func() { _ = httpSrv.Serve(ln) }()
-	defer func() { _ = httpSrv.Close() }()
-
-	catalogDir, err := os.MkdirTemp("", "calipers-wef-")
+	baseURL, closeSrv, err := serveAddin(job)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(catalogDir)
-	if err := WriteSideloadCatalog(catalogDir, baseURL); err != nil {
+	defer closeSrv()
+
+	catalogDir, err := PersistentCatalogDir()
+	if err != nil {
+		return err
+	}
+	ver := sideloadVersion()
+	if err := writeSideloadCatalog(catalogDir, baseURL, ver); err != nil {
 		return err
 	}
 	if err := registerSideload(catalogDir); err != nil {
 		return err
 	}
+	runtimeLog := filepath.Join(catalogDir, "runtime.log")
+	_ = os.Remove(runtimeLog)
+	if err := enableRuntimeLogging(runtimeLog); err != nil {
+		return err
+	}
 	stamped := filepath.Join(catalogDir, "stamped.xlsx")
-	if err := StampWebExtension(stamped, absIn, AddinID); err != nil {
+	if err := stampWebExtension(stamped, absIn, AddinID, ver); err != nil {
 		return err
 	}
 
@@ -116,11 +121,17 @@ func (h *windowsHost) RunScript(inputPath, scriptPath, outputPath string) error 
 		scriptErr <- err
 	}()
 
-	info, err := runExcelSTA(DefaultTimeout+15*time.Second, func(excel *ole.IDispatch) (HostInfo, error) {
-		return openRunSaveWithExcel(excel, stamped, absOut, scriptErr)
-	})
+	// COM CreateObject Excel does not load Office.js / WebView2. Start excel.exe
+	// as a real process (same as a user double-click) and attach to SaveAs.
+	pid, err := startExcelProcess(stamped)
 	if err != nil {
 		return err
+	}
+	info, err := runAttachedExcel(pid, DefaultTimeout+15*time.Second, func(excel *ole.IDispatch) (HostInfo, error) {
+		return saveAfterScript(excel, absOut, scriptErr)
+	})
+	if err != nil {
+		return fmt.Errorf("%w (%s)", err, runtimeLogTail(runtimeLog))
 	}
 	h.mu.Lock()
 	h.last = info
@@ -247,49 +258,45 @@ func openSaveWithExcel(excel *ole.IDispatch, absIn, absOut string) (HostInfo, er
 	return info, nil
 }
 
-func openRunSaveWithExcel(excel *ole.IDispatch, absIn, absOut string, scriptErr <-chan error) (HostInfo, error) {
+func saveAfterScript(excel *ole.IDispatch, absOut string, scriptErr <-chan error) (HostInfo, error) {
 	info := readExcelInfo(excel)
-	if _, err := oleutil.PutProperty(excel, "Visible", true); err != nil {
-		return info, fmt.Errorf("Excel Visible=true: %w", err)
+	_, _ = oleutil.PutProperty(excel, "ScreenUpdating", true)
+	_, _ = oleutil.PutProperty(excel, "EnableEvents", true)
+	_, _ = oleutil.PutProperty(excel, "AutomationSecurity", int32(1))
+
+	// Wait longer than job.wait so its detailed timeout (HTTP hits) wins the race.
+	if err := pumpUntil(scriptErr, DefaultTimeout+5*time.Second); err != nil {
+		return info, err
 	}
 
-	wbProp, err := oleutil.GetProperty(excel, "Workbooks")
+	if _, err := oleutil.PutProperty(excel, "DisplayAlerts", false); err != nil {
+		return info, fmt.Errorf("Excel DisplayAlerts=false: %w", err)
+	}
+	wb, err := activeWorkbook(excel)
 	if err != nil {
-		return info, fmt.Errorf("Excel Workbooks: %w", err)
-	}
-	defer wbProp.Clear()
-	workbooks := wbProp.ToIDispatch()
-	if workbooks == nil {
-		return info, fmt.Errorf("Excel Workbooks is nil")
-	}
-
-	opened, err := oleutil.CallMethod(workbooks, "Open", absIn, int32(0), false)
-	if err != nil {
-		return info, fmt.Errorf("Excel Workbooks.Open %s: %w", absIn, err)
-	}
-	defer opened.Clear()
-	wb := opened.ToIDispatch()
-	if wb == nil {
-		return info, fmt.Errorf("Excel Workbooks.Open returned nil for %s", absIn)
+		return info, err
 	}
 	defer func() {
 		_, _ = oleutil.CallMethod(wb, "Close", false)
 	}()
-
-	if err := pumpUntil(scriptErr, DefaultTimeout); err != nil {
-		return info, err
-	}
-
-	if sameFilePath(absIn, absOut) {
-		if _, err := oleutil.CallMethod(wb, "Save"); err != nil {
-			return info, fmt.Errorf("Excel Workbook.Save: %w", err)
-		}
-	} else {
-		if _, err := oleutil.CallMethod(wb, "SaveAs", absOut, xlOpenXMLWorkbook); err != nil {
-			return info, fmt.Errorf("Excel Workbook.SaveAs %s: %w", absOut, err)
-		}
+	if _, err := oleutil.CallMethod(wb, "SaveAs", absOut, xlOpenXMLWorkbook); err != nil {
+		return info, fmt.Errorf("Excel Workbook.SaveAs %s: %w", absOut, err)
 	}
 	return info, nil
+}
+
+func activeWorkbook(excel *ole.IDispatch) (*ole.IDispatch, error) {
+	v, err := oleutil.GetProperty(excel, "ActiveWorkbook")
+	if err != nil {
+		return nil, fmt.Errorf("Excel ActiveWorkbook: %w", err)
+	}
+	defer v.Clear()
+	wb := v.ToIDispatch()
+	if wb == nil {
+		return nil, fmt.Errorf("Excel ActiveWorkbook is nil")
+	}
+	wb.AddRef()
+	return wb, nil
 }
 
 func pumpUntil(done <-chan error, timeout time.Duration) error {
@@ -362,12 +369,284 @@ func pidFromExcel(excel *ole.IDispatch) uint32 {
 }
 
 var (
-	user32                   = windows.NewLazySystemDLL("user32.dll")
-	getWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
-	peekMessage              = user32.NewProc("PeekMessageW")
-	translateMessage         = user32.NewProc("TranslateMessage")
-	dispatchMessage          = user32.NewProc("DispatchMessageW")
+	user32                     = windows.NewLazySystemDLL("user32.dll")
+	oleacc                     = windows.NewLazySystemDLL("oleacc.dll")
+	getWindowThreadProcessId   = user32.NewProc("GetWindowThreadProcessId")
+	peekMessage                = user32.NewProc("PeekMessageW")
+	translateMessage           = user32.NewProc("TranslateMessage")
+	dispatchMessage            = user32.NewProc("DispatchMessageW")
+	findWindowEx               = user32.NewProc("FindWindowExW")
+	accessibleObjectFromWindow = oleacc.NewProc("AccessibleObjectFromWindow")
 )
+
+const objidNativeOM = 0xFFFFFFF0
+
+func serveAddin(handler http.Handler) (baseURL string, closeFn func(), err error) {
+	ln4, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, fmt.Errorf("add-in server: %w", err)
+	}
+	port := ln4.Addr().(*net.TCPAddr).Port
+	lns := []net.Listener{ln4}
+	if ln6, err6 := net.Listen("tcp6", fmt.Sprintf("[::1]:%d", port)); err6 == nil {
+		lns = append(lns, ln6)
+	}
+	for _, ln := range lns {
+		go func(ln net.Listener) { _ = http.Serve(ln, handler) }(ln)
+	}
+	return fmt.Sprintf("http://localhost:%d", port), func() {
+		for _, ln := range lns {
+			_ = ln.Close()
+		}
+	}, nil
+}
+
+func startExcelProcess(xlsx string) (uint32, error) {
+	exe, err := excelExecutable()
+	if err != nil {
+		return 0, err
+	}
+	cmd := exec.Command(exe, "/x", xlsx)
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("start Excel: %w", err)
+	}
+	return uint32(cmd.Process.Pid), nil
+}
+
+func excelExecutable() (string, error) {
+	hives := []registry.Key{registry.CURRENT_USER, registry.LOCAL_MACHINE}
+	subs := []string{
+		`SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe`,
+		`SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\excel.exe`,
+	}
+	for _, hive := range hives {
+		for _, sub := range subs {
+			k, err := registry.OpenKey(hive, sub, registry.QUERY_VALUE)
+			if err != nil {
+				continue
+			}
+			path, _, err := k.GetStringValue("")
+			k.Close()
+			if err != nil || path == "" {
+				continue
+			}
+			if _, err := os.Stat(path); err == nil {
+				return path, nil
+			}
+		}
+	}
+	for _, c := range []string{
+		`C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE`,
+		`C:\Program Files (x86)\Microsoft Office\root\Office16\EXCEL.EXE`,
+		`C:\Program Files\Microsoft Office\Office16\EXCEL.EXE`,
+	} {
+		if _, err := os.Stat(c); err == nil {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("excel.exe not found")
+}
+
+func runAttachedExcel(startPID uint32, timeout time.Duration, job excelJob) (HostInfo, error) {
+	type result struct {
+		info HostInfo
+		err  error
+	}
+	done := make(chan result, 1)
+	var livePID atomic.Uint32
+	livePID.Store(startPID)
+
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		if e := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED); e != nil {
+		}
+		defer ole.CoUninitialize()
+
+		excel, err := waitAttachExcel(startPID, 45*time.Second)
+		if err != nil {
+			done <- result{info: HostInfo{ID: HostID, OS: runtime.GOOS}, err: err}
+			return
+		}
+		if p := pidFromExcel(excel); p != 0 {
+			livePID.Store(p)
+		}
+		defer func() {
+			_, _ = oleutil.CallMethod(excel, "Quit")
+			excel.Release()
+			if p := livePID.Load(); p != 0 {
+				waitOrKill(p, 10*time.Second)
+			}
+		}()
+		info, err := job(excel)
+		done <- result{info: info, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case r := <-done:
+		return r.info, r.err
+	case <-timer.C:
+		if p := livePID.Load(); p != 0 {
+			killPID(p)
+		}
+		return HostInfo{}, fmt.Errorf("excel-run timed out after %s", timeout)
+	}
+}
+
+func waitAttachExcel(startPID uint32, timeout time.Duration) (*ole.IDispatch, error) {
+	deadline := time.Now().Add(timeout)
+	var last error
+	for time.Now().Before(deadline) {
+		pumpMessages()
+		disp, err := attachExcel(startPID)
+		if err == nil {
+			return disp, nil
+		}
+		last = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	if last == nil {
+		last = fmt.Errorf("no Excel window")
+	}
+	return nil, fmt.Errorf("attach Excel: %w", last)
+}
+
+func attachExcel(startPID uint32) (*ole.IDispatch, error) {
+	pids := descendantPIDs(startPID)
+	xlmain := findXLMAIN(pids)
+	if xlmain == 0 {
+		return nil, fmt.Errorf("no XLMAIN for pid %v", pids)
+	}
+	desk := findChild(xlmain, 0, "XLDESK")
+	if desk == 0 {
+		return nil, fmt.Errorf("no XLDESK")
+	}
+	book := findChild(desk, 0, "EXCEL7")
+	if book == 0 {
+		return nil, fmt.Errorf("no EXCEL7")
+	}
+	var win *ole.IDispatch
+	hr, _, _ := accessibleObjectFromWindow.Call(
+		book,
+		objidNativeOM,
+		uintptr(unsafe.Pointer(ole.IID_IDispatch)),
+		uintptr(unsafe.Pointer(&win)),
+	)
+	if hr != 0 || win == nil {
+		if app, err := activeExcelMatching(pids); err == nil {
+			return app, nil
+		}
+		return nil, fmt.Errorf("AccessibleObjectFromWindow hr=0x%x", hr)
+	}
+	appVar, err := oleutil.GetProperty(win, "Application")
+	win.Release()
+	if err != nil {
+		return nil, fmt.Errorf("Window.Application: %w", err)
+	}
+	defer appVar.Clear()
+	app := appVar.ToIDispatch()
+	if app == nil {
+		return nil, fmt.Errorf("Window.Application is nil")
+	}
+	app.AddRef()
+	return app, nil
+}
+
+func activeExcelMatching(pids []uint32) (*ole.IDispatch, error) {
+	unk, err := oleutil.GetActiveObject("Excel.Application")
+	if err != nil {
+		return nil, err
+	}
+	defer unk.Release()
+	app, err := unk.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return nil, err
+	}
+	got := pidFromExcel(app)
+	for _, p := range pids {
+		if p != 0 && p == got {
+			return app, nil
+		}
+	}
+	app.Release()
+	return nil, fmt.Errorf("GetActiveObject pid %d not in %v", got, pids)
+}
+
+func findChild(parent, after uintptr, class string) uintptr {
+	cls, err := windows.UTF16PtrFromString(class)
+	if err != nil {
+		return 0
+	}
+	hwnd, _, _ := findWindowEx.Call(parent, after, uintptr(unsafe.Pointer(cls)), 0)
+	return hwnd
+}
+
+func findXLMAIN(pids []uint32) uintptr {
+	want := map[uint32]bool{}
+	for _, p := range pids {
+		want[p] = true
+	}
+	cls, err := windows.UTF16PtrFromString("XLMAIN")
+	if err != nil {
+		return 0
+	}
+	var hwnd uintptr
+	for {
+		next, _, _ := findWindowEx.Call(0, hwnd, uintptr(unsafe.Pointer(cls)), 0)
+		if next == 0 {
+			return 0
+		}
+		hwnd = next
+		var wpid uint32
+		getWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&wpid)))
+		if want[wpid] {
+			return hwnd
+		}
+	}
+}
+
+func descendantPIDs(root uint32) []uint32 {
+	children := childrenByParent()
+	out := []uint32{root}
+	queue := []uint32{root}
+	seen := map[uint32]bool{root: true}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		for _, c := range children[p] {
+			if seen[c] {
+				continue
+			}
+			seen[c] = true
+			out = append(out, c)
+			queue = append(queue, c)
+		}
+	}
+	return out
+}
+
+func childrenByParent() map[uint32][]uint32 {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil
+	}
+	defer windows.CloseHandle(snap)
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e))
+	if err := windows.Process32First(snap, &e); err != nil {
+		return nil
+	}
+	out := map[uint32][]uint32{}
+	for {
+		out[e.ParentProcessID] = append(out[e.ParentProcessID], e.ProcessID)
+		if err := windows.Process32Next(snap, &e); err != nil {
+			break
+		}
+	}
+	return out
+}
 
 func waitOrKill(pid uint32, wait time.Duration) {
 	deadline := time.Now().Add(wait)
@@ -400,4 +679,20 @@ func killPID(pid uint32) {
 		return
 	}
 	_ = proc.Kill()
+}
+
+func runtimeLogTail(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "no Office add-in runtime log"
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "" {
+		return "Office add-in runtime log empty"
+	}
+	const max = 2000
+	if len(s) > max {
+		s = s[len(s)-max:]
+	}
+	return "runtime.log: " + s
 }
