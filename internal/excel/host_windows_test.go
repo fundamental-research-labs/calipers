@@ -52,3 +52,35 @@ func TestWindowsOpenSave(t *testing.T) {
 		t.Fatal("expected Excel version after OpenSave")
 	}
 }
+
+func TestWindowsRunScript(t *testing.T) {
+	h := NewHost()
+	if !h.Available() {
+		t.Skip("Excel.Application ProgID not registered")
+	}
+	src := os.Getenv("CALIPERS_TEST_XLSX")
+	js := os.Getenv("CALIPERS_TEST_JS")
+	if src == "" || js == "" {
+		t.Skip("set CALIPERS_TEST_XLSX and CALIPERS_TEST_JS to run this test")
+	}
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(in, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.RunScript(in, js, out); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Size() == 0 {
+		t.Fatal("output is empty")
+	}
+}

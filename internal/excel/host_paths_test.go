@@ -51,6 +51,34 @@ func TestPreparePathsAbsAndRemovesDest(t *testing.T) {
 	}
 }
 
+func TestPrepareScriptRun(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.xlsx")
+	js := filepath.Join(dir, "script.js")
+	out := filepath.Join(dir, "out.xlsx")
+	if err := os.WriteFile(in, []byte("pk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(js, []byte("await Excel.run(async () => {});"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	absIn, absJS, absOut, err := prepareScriptRun(in, js, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(absIn) || !filepath.IsAbs(absJS) || !filepath.IsAbs(absOut) {
+		t.Fatalf("not abs: %q %q %q", absIn, absJS, absOut)
+	}
+	_, _, _, err = prepareScriptRun(in, "", out)
+	if err == nil {
+		t.Fatal("expected error for empty script path")
+	}
+	_, _, _, err = prepareScriptRun(in, filepath.Join(dir, "missing.js"), out)
+	if err == nil {
+		t.Fatal("expected missing script error")
+	}
+}
+
 func TestPreparePathsMissingInput(t *testing.T) {
 	dir := t.TempDir()
 	_, _, err := preparePaths(filepath.Join(dir, "missing.xlsx"), filepath.Join(dir, "out.xlsx"))

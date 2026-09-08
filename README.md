@@ -11,9 +11,9 @@ This repository is the verification tool and its init corpus. It is not a spread
 ## Requirements
 
 - Go 1.22+
-- For `excel-save`: Windows + Microsoft Excel (desktop)
+- For `excel-save` and `excel-run`: Windows + Microsoft Excel (desktop)
 
-Off Windows, `excel-save` exits with:
+Off Windows, those commands exit with:
 
 ```
 calipers: excel-save requires Windows + Excel (COM)
@@ -33,8 +33,11 @@ go test ./...
 ## Commands
 
 ```bash
-# Open input in Excel, Save As xlsx to output (Windows + Excel COM)
+# Open input in Excel, Save As xlsx (load+save, no Office.js)
 calipers excel-save <input.xlsx> <output.xlsx>
+
+# Open input, run Office.js inside Excel (sideloaded add-in), Save As
+calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 
 # Tool version (on Windows, also prints Excel version when COM works)
 calipers version
@@ -43,13 +46,16 @@ calipers version
 calipers -h
 ```
 
-Example:
+Examples:
 
 ```bash
-calipers excel-save verification/cases/tier_a_simple/init.xlsx golden.xlsx
+calipers excel-save verification/cases/tier_a_simple/init.xlsx verification/cases/tier_a_simple/golden.xlsx
+calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
+  verification/cases/tier_a_simple_set_a1/script.js \
+  verification/cases/tier_a_simple_set_a1/golden.xlsx
 ```
 
-A successful save also writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, optional `script` identity, UTC `generatedAt`). Load+save goldens omit `script`.
+A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, optional `script` identity, UTC `generatedAt`). Load+save goldens omit `script`. `excel-run` records the script basename.
 
 CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
 
@@ -74,4 +80,16 @@ A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tie
 - timeout plus started-PID cleanup
 - `Workbooks.Open` then `SaveAs` xlsx format 51
 
-Goldens must be generated on **Windows Excel via COM**. macOS Excel is not used.
+`excel-run` uses the same COM lifecycle, then a **sideloaded Office.js add-in** (not AppSource, not Office Scripts):
+
+- Local HTTP server serves `internal/excel/web/` (task pane + Office.js from CDN)
+- GET `/job` hands the corpus script to the add-in; the add-in `Excel.run`s it; POST `/done` signals completion
+- WEF **Developer** sideload (`HKCU\...\WEF\Developer\<add-in GUID>` = path to the manifest) so the workbook web-extension stamp (`store=developer`, `storeType=Registry`) can auto-open the task pane
+- WEF **TrustedCatalogs** `{GUID}` key with `Id` and a UNC `Url` (`\\localhost\<drive>$\...`) so Insert → Add-ins → Shared Folder can list it
+- Excel is shown (`Visible=true`) so WebView2 can run
+
+First-time Windows box: if the task pane does not appear, Insert → Add-ins → Shared Folder → **Calipers Office.js runner**. The catalog URL is a UNC path to the local folder (ADMIN$ / `C$`). After that, `excel-run` should auto-open it.
+
+Office.js cannot be eval’d through COM. Corpus scripts stay `Excel.run` (not Automate / Office Scripts).
+
+Goldens must be generated on **Windows Excel**. macOS Excel is not used.

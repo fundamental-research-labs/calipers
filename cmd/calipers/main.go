@@ -1,6 +1,7 @@
 // calipers drives Excel (Windows COM) to produce golden xlsx files.
 //
 //	calipers excel-save <input.xlsx> <output.xlsx>
+//	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 //	calipers version
 package main
 
@@ -34,6 +35,11 @@ func run(args []string) error {
 			return fmt.Errorf("usage: calipers excel-save <input.xlsx> <output.xlsx>")
 		}
 		return excelSave(args[1], args[2])
+	case "excel-run":
+		if len(args) != 4 {
+			return fmt.Errorf("usage: calipers excel-run <input.xlsx> <script.js> <output.xlsx>")
+		}
+		return excelRun(args[1], args[2], args[3])
 	case "version":
 		return printVersion()
 	default:
@@ -45,8 +51,12 @@ const usage = `calipers — generate Excel goldens (Windows COM)
 
 Commands:
   excel-save <input.xlsx> <output.xlsx>
-      Open input in Excel and Save As xlsx to output.
+      Open input in Excel and Save As xlsx to output (load+save, no Office.js).
       Requires Windows + Microsoft Excel. Off Windows this command errors.
+
+  excel-run <input.xlsx> <script.js> <output.xlsx>
+      Open input in Excel, run Office.js inside Excel (sideloaded add-in),
+      then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
 
   version
       Print calipers version. On Windows, also print Excel version
@@ -71,13 +81,39 @@ func excelSave(inputPath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("excel info after save: %w", err)
 	}
-	meta := golden.New(info.ID, info.OS, info.ExcelVersion, info.ExcelBuild, filepath.Base(inputPath))
+	meta := sidecarMeta(info, inputPath, "")
 	if err := golden.Write(outputPath, meta); err != nil {
 		return err
 	}
 	fmt.Printf("wrote %s\n", outputPath)
 	fmt.Printf("wrote %s\n", golden.PathFor(outputPath))
 	return nil
+}
+
+func excelRun(inputPath, scriptPath, outputPath string) error {
+	host := excel.NewHost()
+	if err := host.RunScript(inputPath, scriptPath, outputPath); err != nil {
+		return err
+	}
+	info, err := host.Info()
+	if err != nil {
+		return fmt.Errorf("excel info after run: %w", err)
+	}
+	meta := sidecarMeta(info, inputPath, scriptPath)
+	if err := golden.Write(outputPath, meta); err != nil {
+		return err
+	}
+	fmt.Printf("wrote %s\n", outputPath)
+	fmt.Printf("wrote %s\n", golden.PathFor(outputPath))
+	return nil
+}
+
+func sidecarMeta(info excel.HostInfo, inputPath, scriptPath string) golden.Meta {
+	m := golden.New(info.ID, info.OS, info.ExcelVersion, info.ExcelBuild, filepath.Base(inputPath))
+	if scriptPath != "" {
+		m.Script = filepath.Base(scriptPath)
+	}
+	return m
 }
 
 func printVersion() error {
