@@ -46,16 +46,16 @@ calipers -h
 Example:
 
 ```bash
-calipers excel-save verification/init_files/tier_a_simple.xlsx golden.xlsx
+calipers excel-save verification/cases/tier_a_simple/init.xlsx golden.xlsx
 ```
 
-A successful save also writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, UTC `generatedAt`).
+A successful save also writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, optional `script` identity, UTC `generatedAt`). Load+save goldens omit `script`.
 
 CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
 
-## Init corpus
+## Cases
 
-Inputs live in [`verification/init_files/`](verification/init_files/). **91 files** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. **91 cases** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
 
 | Prefix | Role |
 |--------|------|
@@ -63,7 +63,7 @@ Inputs live in [`verification/init_files/`](verification/init_files/). **91 file
 | `tier_b_` | Remaining work (charts, pivot, tables/autofilter, CF, validation, comments, drawings, hyperlinks, protection, print). Goldens still useful: Excel keeps these, an engine may drop them. |
 | `tier_c_` | Later / hostile (strict OOXML, password, XML bomb, huge stress, ATP, OLE embed). **Do not** run in the default golden pass. |
 
-A default golden pass skips hostile files such as `tier_c_xmlbomb.xlsx` and password-encrypted workbooks (`tier_c_password.xlsx`).
+A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …).
 
 ## Host
 
