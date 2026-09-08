@@ -1,0 +1,219 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/fundamental-research-labs/calipers/internal/cases"
+	"github.com/fundamental-research-labs/calipers/internal/compare"
+	enginehost "github.com/fundamental-research-labs/calipers/internal/engine"
+	"github.com/fundamental-research-labs/calipers/internal/excel"
+)
+
+// engine is the OpenSave/RunScript surface shared by Excel and an external binary.
+type engine interface {
+	OpenSave(inputPath, outputPath string) error
+	RunScript(inputPath, scriptPath, outputPath string) error
+}
+
+var (
+	newExcelHost  = func() engine { return excel.NewHost() }
+	newBinaryHost = func(path string) engine { return enginehost.New(path) }
+)
+
+const verifyUsage = `calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+
+  For each case: run the engine (load init.xlsx, Office.js if present and
+  non-empty), export a result xlsx (not the golden), semantically compare
+  to the committed Excel golden.
+
+  --engine excel    Excel COM host (Windows)
+  --engine PATH     external binary:  save <in> <out>
+                                      run  <in> <script.js> <out>
+
+  Default walk is tier_a and tier_b (skip tier_c hostiles).
+  --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
+`
+
+func verifyCmd(args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	engineSpec := fs.String("engine", "", "engine binary path, or 'excel'")
+	casesDir := fs.String("cases-dir", cases.DirName, "verification cases directory")
+	outDir := fs.String("out-dir", "", "directory for engine exports (never the case golden)")
+	var caseIDs []string
+	fs.Func("case", "case id to run (repeatable or comma-separated; default: tier_a and tier_b)", func(s string) error {
+		for _, id := range strings.Split(s, ",") {
+			id = strings.TrimSpace(id)
+			if id != "" {
+				caseIDs = append(caseIDs, id)
+			}
+		}
+		return nil
+	})
+	fs.Usage = func() {
+		fmt.Fprint(os.Stdout, verifyUsage)
+	}
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return err
+	}
+	if fs.NArg() > 1 {
+		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...")
+	}
+	if fs.NArg() == 1 {
+		*casesDir = fs.Arg(0)
+	}
+	host, err := hostFromSpec(*engineSpec)
+	if err != nil {
+		return err
+	}
+	return runVerify(host, *casesDir, caseIDs, *outDir, os.Stdout)
+}
+
+func hostFromSpec(spec string) (engine, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		spec = defaultEngineSpec()
+	}
+	switch spec {
+	case "":
+		return nil, fmt.Errorf("verify requires --engine <path|excel> (or MOG_BIN / vendor/mog artefact)")
+	case "excel":
+		return newExcelHost(), nil
+	default:
+		return newBinaryHost(spec), nil
+	}
+}
+
+func defaultEngineSpec() string {
+	if b := os.Getenv("MOG_BIN"); b != "" {
+		return b
+	}
+	if b := os.Getenv("ENGINE"); b != "" {
+		return b
+	}
+	return findVendorMog()
+}
+
+func findVendorMog() string {
+	name := "mog"
+	if runtime.GOOS == "windows" {
+		name = "mog.exe"
+	}
+	var starts []string
+	if wd, err := os.Getwd(); err == nil {
+		starts = append(starts, wd)
+	}
+	seen := map[string]bool{}
+	for _, start := range starts {
+		for dir := start; ; dir = filepath.Dir(dir) {
+			if seen[dir] {
+				break
+			}
+			seen[dir] = true
+			for _, p := range []string{
+				filepath.Join(dir, "vendor", "mog", "target-native", "debug", name),
+				filepath.Join(dir, "vendor", "mog", "target-native", "release", name),
+			} {
+				if st, err := os.Stat(p); err == nil && !st.IsDir() {
+					return p
+				}
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+		}
+	}
+	return ""
+}
+
+type caseOutcome struct {
+	ID     string
+	Export string
+	Status string // pass, fail, error
+	Detail string
+}
+
+func runVerify(eng engine, casesDir string, caseIDs []string, outDir string, w io.Writer) error {
+	all, err := cases.Load(casesDir)
+	if err != nil {
+		return err
+	}
+	selected, err := cases.Select(all, caseIDs)
+	if err != nil {
+		return err
+	}
+	if outDir == "" {
+		outDir = filepath.Join(os.TempDir(), "calipers-verify")
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+
+	if len(selected) == 0 {
+		fmt.Fprintf(w, "verify: 0 pass, 0 fail, 0 error\n")
+		return nil
+	}
+
+	var nPass, nFail, nErr int
+	for i, c := range selected {
+		o := verifyOne(eng, c, outDir)
+		switch o.Status {
+		case "pass":
+			nPass++
+		case "fail":
+			nFail++
+		default:
+			nErr++
+		}
+		fmt.Fprintf(w, "[%d/%d] %s %s", i+1, len(selected), c.ID, strings.ToUpper(o.Status))
+		if o.Detail != "" {
+			fmt.Fprintf(w, " %s", o.Detail)
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "verify: %d pass, %d fail, %d error\n", nPass, nFail, nErr)
+	if nFail+nErr > 0 {
+		return fmt.Errorf("%d failed, %d error", nFail, nErr)
+	}
+	return nil
+}
+
+func verifyOne(eng engine, c cases.Case, outDir string) caseOutcome {
+	exportPath := filepath.Join(outDir, c.ID+".xlsx")
+	if filepath.Clean(exportPath) == filepath.Clean(c.GoldenPath) {
+		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: "refusing to overwrite golden"}
+	}
+
+	var err error
+	if c.RunScript() {
+		err = eng.RunScript(c.InitPath, c.ScriptPath, exportPath)
+	} else {
+		err = eng.OpenSave(c.InitPath, exportPath)
+	}
+	if err != nil {
+		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
+	}
+
+	got, err := compare.Files(exportPath, c.GoldenPath)
+	if err != nil {
+		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
+	}
+	if got.Equal {
+		return caseOutcome{ID: c.ID, Export: exportPath, Status: "pass"}
+	}
+	detail := fmt.Sprintf("(%d diffs)", len(got.Diffs))
+	if len(got.Diffs) > 0 {
+		detail += " " + got.Diffs[0].Part
+	}
+	return caseOutcome{ID: c.ID, Export: exportPath, Status: "fail", Detail: detail}
+}

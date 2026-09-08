@@ -105,6 +105,27 @@ func OpenSavePass(all []Case) []Case {
 	return out
 }
 
+// Select returns DefaultPass when ids is empty, otherwise the named cases
+// in the given order (tier_c included only if asked). Unknown ids error.
+func Select(all []Case, ids []string) ([]Case, error) {
+	if len(ids) == 0 {
+		return DefaultPass(all), nil
+	}
+	byID := make(map[string]Case, len(all))
+	for _, c := range all {
+		byID[c.ID] = c
+	}
+	out := make([]Case, 0, len(ids))
+	for _, id := range ids {
+		c, ok := byID[id]
+		if !ok {
+			return nil, fmt.Errorf("unknown case %q", id)
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
 func parseTier(name string) (Tier, bool) {
 	m := tierName.FindStringSubmatch(name)
 	if m == nil {

@@ -19,7 +19,7 @@ Off Windows, those commands exit with:
 calipers: excel-save requires Windows + Excel (COM)
 ```
 
-`version` and `-h` / `--help` work on any OS.
+`version`, `verify`, and `-h` / `--help` work on any OS. `verify --engine excel` needs Windows + Excel. `verify --engine <bin>` execs a caller-supplied binary (`save` / `run`).
 
 ## Build
 
@@ -42,6 +42,10 @@ calipers excel-save-pass [cases-dir]
 # Open input, run Office.js inside Excel (sideloaded add-in), Save As
 calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 
+# Engine vs committed Excel goldens (binary host or Excel)
+calipers verify --engine /path/to/engine --case tier_a_simple
+calipers verify --engine excel --case tier_a_simple
+
 # Tool version (on Windows, also prints Excel version when COM works)
 calipers version
 
@@ -57,6 +61,9 @@ calipers excel-save-pass
 calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
   verification/cases/tier_a_simple_set_a1/script.js \
   verification/cases/tier_a_simple_set_a1/golden.xlsx
+
+# External engine binary (argv: save <in> <out> / run <in> <script.js> <out>)
+calipers verify --engine ./vendor/mog/target-native/debug/mog --case tier_a_simple
 ```
 
 A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, optional `script` identity, UTC `generatedAt`). Load+save goldens omit `script`. `excel-run` records the script basename.

@@ -158,6 +158,50 @@ func TestDefaultPassExcludesTierC(t *testing.T) {
 	}
 }
 
+func TestSelectDefaultPassWhenNoIDs(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "tier_a_one", "pk", nil)
+	writeCase(t, root, "tier_b_two", "pk", nil)
+	writeCase(t, root, "tier_c_bomb", "pk", nil)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Select(all, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len=%d, want default pass 2", len(got))
+	}
+	for _, c := range got {
+		if c.Tier == TierC {
+			t.Fatalf("default select included %s", c.ID)
+		}
+	}
+}
+
+func TestSelectByIDIncludesTierCAndOrder(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "tier_a_one", "pk", nil)
+	writeCase(t, root, "tier_c_bomb", "pk", nil)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Select(all, []string{"tier_c_bomb", "tier_a_one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "tier_c_bomb" || got[1].ID != "tier_a_one" {
+		t.Fatalf("got %+v", got)
+	}
+	_, err = Select(all, []string{"tier_a_nope"})
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unknown case")) {
+		t.Fatalf("want unknown case, got %v", err)
+	}
+}
+
 func TestLoadIgnoresNonCaseDirs(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "not_a_case"), 0o755); err != nil {
