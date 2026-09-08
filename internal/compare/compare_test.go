@@ -38,6 +38,49 @@ func TestArchivesIgnoresVolatileBits(t *testing.T) {
 	}
 }
 
+func TestArchivesIgnoresPrinterSettingsOnlySheetRels(t *testing.T) {
+	// Excel goldens often keep xl/worksheets/_rels/sheetN.xml.rels whose only
+	// relationship is printerSettings, plus a Content_Types Default for .bin.
+	// Those leftovers must not fail compare against an export that omits them.
+	sheet := sheetXML("hello")
+	wb := workbookXML("1", "0")
+	rels := workbookRels(false)
+	export := mustXLSX(t, map[string]string{
+		"[Content_Types].xml":        contentTypes(false),
+		"xl/workbook.xml":            wb,
+		"xl/_rels/workbook.xml.rels": rels,
+		"xl/worksheets/sheet1.xml":   sheet,
+	})
+	golden := mustXLSX(t, map[string]string{
+		"[Content_Types].xml": contentTypes(false)[:len(contentTypes(false))-len("</Types>")] +
+			`<Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.printerSettings"/>` +
+			`<Override PartName="/xl/printerSettings/printerSettings1.bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.printerSettings"/>` +
+			`</Types>`,
+		"xl/workbook.xml":            wb,
+		"xl/_rels/workbook.xml.rels": rels,
+		"xl/worksheets/sheet1.xml":   sheet,
+		"xl/worksheets/_rels/sheet1.xml.rels": `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/printerSettings" Target="../printerSettings/printerSettings1.bin"/>
+</Relationships>`,
+		"xl/printerSettings/printerSettings1.bin": "printer-blob",
+	})
+	got, err := Archives(export, golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("printer-settings-only leftovers should be ignored, got %v", got.Diffs)
+	}
+	rev, err := Archives(golden, export)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rev.Equal {
+		t.Fatalf("extra printer-settings-only parts in export should be ignored, got %v", rev.Diffs)
+	}
+}
+
 func TestArchivesIgnoresZipMtimes(t *testing.T) {
 	parts := map[string]string{
 		"[Content_Types].xml":      contentTypes(false),

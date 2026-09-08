@@ -57,6 +57,9 @@ func Archives(export, golden []byte) (Result, error) {
 	for name := range goldParts {
 		seen[name] = true
 		if _, ok := expParts[name]; !ok {
+			if volatileOnlyPart(name, goldParts[name]) {
+				continue
+			}
 			diffs = append(diffs, Diff{Part: name, Detail: "present in golden, missing in export"})
 			continue
 		}
@@ -66,6 +69,9 @@ func Archives(export, golden []byte) (Result, error) {
 	}
 	for name := range expParts {
 		if seen[name] {
+			continue
+		}
+		if volatileOnlyPart(name, expParts[name]) {
 			continue
 		}
 		diffs = append(diffs, Diff{Part: name, Detail: "not in golden, extra in export"})
@@ -160,7 +166,7 @@ func stripElem(xml, tag string) string {
 }
 
 func stripContentTypeOverrides(xml string) string {
-	re := regexp.MustCompile(`<Override\b[^>]*/>`)
+	re := regexp.MustCompile(`<(Override|Default)\b[^>]*/>`)
 	return re.ReplaceAllStringFunc(xml, func(tag string) string {
 		low := strings.ToLower(tag)
 		if strings.Contains(low, "calcchain.xml") || strings.Contains(low, "printersettings") {
@@ -169,6 +175,25 @@ func stripContentTypeOverrides(xml string) string {
 		return tag
 	})
 }
+
+// volatileOnlyPart reports parts that exist only as stripped printer-settings
+// or calcChain leftovers (e.g. a sheet .rels whose relationships were all
+// printerSettings). They must not count as extra/missing against a workbook
+// that omitted the file entirely.
+func volatileOnlyPart(name string, body []byte) bool {
+	if ignoredPart(name) {
+		return true
+	}
+	n := strings.ToLower(name)
+	if !strings.HasSuffix(n, ".rels") {
+		return false
+	}
+	stripped := stripVolatileRels(string(body))
+	return !relationshipTag.MatchString(stripped)
+}
+
+// relationshipTag matches a Relationship element, not the Relationships wrapper.
+var relationshipTag = regexp.MustCompile(`<Relationship[\s/>]`)
 
 func stripVolatileRels(xml string) string {
 	re := regexp.MustCompile(`<Relationship\b[^>]*/>`)
