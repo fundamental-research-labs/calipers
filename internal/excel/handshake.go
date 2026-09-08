@@ -43,6 +43,7 @@ type jobServer struct {
 	mu     sync.Mutex
 	done   chan Done
 	once   sync.Once
+	hits   []string
 }
 
 func newJobServer(script string) *jobServer {
@@ -54,6 +55,21 @@ func newJobServer(script string) *jobServer {
 
 func (s *jobServer) complete(d Done) {
 	s.once.Do(func() { s.done <- d })
+}
+
+func (s *jobServer) recordHit(r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hits = append(s.hits, r.Method+" "+r.URL.Path)
+}
+
+func (s *jobServer) hitSummary() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.hits) == 0 {
+		return "add-in made 0 HTTP requests (task pane never loaded)"
+	}
+	return "add-in HTTP: " + strings.Join(s.hits, ", ")
 }
 
 func (s *jobServer) wait(timeout time.Duration) (Done, error) {
@@ -70,12 +86,21 @@ func (s *jobServer) wait(timeout time.Duration) (Done, error) {
 		}
 		return d, nil
 	case <-t.C:
-		return Done{}, fmt.Errorf("excel-run timed out waiting for Office.js after %s", timeout)
+		return Done{}, fmt.Errorf("excel-run timed out waiting for Office.js after %s (%s)", timeout, s.hitSummary())
 	}
 }
 
 func (s *jobServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.recordHit(r)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/loaded":
+		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodGet && r.URL.Path == "/job":
 		data, err := EncodeJob(s.script)
 		if err != nil {

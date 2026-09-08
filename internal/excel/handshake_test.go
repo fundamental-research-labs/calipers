@@ -91,7 +91,7 @@ func TestJobServerHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, need := range []string{"Excel.run", "/job", "/done", "AsyncFunction"} {
+	for _, need := range []string{"Excel.run", "/job", "/done", "AsyncFunction", "/loaded"} {
 		if !bytes.Contains(js, []byte(need)) {
 			t.Fatalf("taskpane.js missing %q", need)
 		}
@@ -109,6 +109,21 @@ func TestJobServerHandshake(t *testing.T) {
 	_ = doneRes.Body.Close()
 	if err := <-waitErr; err != nil {
 		t.Fatalf("wait after ok: %v", err)
+	}
+}
+
+func TestJobServerWaitTimeoutIncludesHits(t *testing.T) {
+	srv := newJobServer("await Excel.run(async () => {});")
+	_, err := srv.wait(20 * time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "0 HTTP requests") {
+		t.Fatalf("timeout without hits = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/taskpane.html", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	_, err = srv.wait(20 * time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "GET /taskpane.html") {
+		t.Fatalf("timeout with hits = %v", err)
 	}
 }
 

@@ -27,6 +27,9 @@ func TestRenderManifest(t *testing.T) {
 	if strings.Contains(s, "{{.") {
 		t.Fatal("unexpanded template")
 	}
+	if !strings.Contains(s, "<Version>1.0.0</Version>") {
+		t.Fatal("RenderManifest should fill Version")
+	}
 	if !strings.Contains(s, "Runs corpus Office.js") {
 		t.Fatal("manifest should describe Office.js runner")
 	}
@@ -69,6 +72,23 @@ func TestWriteSideloadCatalog(t *testing.T) {
 	}
 	if reg.CatalogFlags != 1 {
 		t.Fatalf("Flags = %d", reg.CatalogFlags)
+	}
+}
+
+func TestPersistentCatalogDir(t *testing.T) {
+	if os.Getenv("LOCALAPPDATA") == "" {
+		t.Skip("LOCALAPPDATA unset")
+	}
+	dir, err := PersistentCatalogDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.ToLower(dir), `calipers\wef`) {
+		t.Fatalf("PersistentCatalogDir = %q", dir)
+	}
+	st, err := os.Stat(dir)
+	if err != nil || !st.IsDir() {
+		t.Fatalf("catalog dir: %v", err)
 	}
 }
 

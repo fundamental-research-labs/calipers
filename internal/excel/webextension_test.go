@@ -48,6 +48,9 @@ func TestStampWebExtension(t *testing.T) {
 	if !strings.Contains(we, `store="developer"`) || !strings.Contains(we, `storeType="Registry"`) {
 		t.Fatalf("webextension must resolve via WEF\\Developer, got:\n%s", we)
 	}
+	if _, ok := found["xl/webextensions/webextension1.xml"]; ok {
+		t.Fatal("stamp must use official sideload part webextension.xml, not webextension1.xml")
+	}
 	reg, err := NewSideloadReg(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +61,10 @@ func TestStampWebExtension(t *testing.T) {
 	ct := string(found[contentTypesName])
 	if !strings.Contains(ct, "webextension+xml") {
 		t.Fatalf("content types:\n%s", ct)
+	}
+	pkgRels := string(found[packageRelsName])
+	if !strings.Contains(pkgRels, "webextensiontaskpanes") || !strings.Contains(pkgRels, "/xl/webextensions/taskpanes.xml") {
+		t.Fatalf("package rels must point at taskpanes (Office sideload template):\n%s", pkgRels)
 	}
 }
 

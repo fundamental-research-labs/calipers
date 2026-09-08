@@ -42,7 +42,7 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Each case is `cases/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8). One scripted case so far: `tier_a_simple_set_a1` (copy of `tier_a_simple` init; sets A1). `tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each case. Not in that set: `tier_a_simple_set_a1` (Office.js) and `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
+Each case is `cases/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8). One scripted case so far: `tier_a_simple_set_a1` (copy of `tier_a_simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`). `tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted `tier_a`/`tier_b` case. The Office.js golden is also committed (`script=script.js`); `excel-save-pass` still skips it. Not in that set: `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
 
 | Prefix | Role |
 |--------|------|

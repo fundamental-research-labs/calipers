@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 )
 
 const catalogManifestName = "calipers-runner.xml"
@@ -17,11 +18,19 @@ const CatalogGUID = "5c1a1e15-0000-4000-a000-c01a1e1500ca"
 type manifestData struct {
 	ID      string
 	BaseURL string
+	Version string
 }
 
 // RenderManifest fills the sideload manifest with the local add-in base URL.
 func RenderManifest(baseURL string) ([]byte, error) {
+	return renderManifest(baseURL, "1.0.0")
+}
+
+func renderManifest(baseURL, version string) ([]byte, error) {
 	baseURL = strings.TrimRight(baseURL, "/")
+	if version == "" {
+		version = "1.0.0"
+	}
 	tmplBytes, err := webFS.ReadFile("web/manifest.xml.tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("add-in manifest: %w", err)
@@ -31,7 +40,7 @@ func RenderManifest(baseURL string) ([]byte, error) {
 		return nil, fmt.Errorf("add-in manifest: %w", err)
 	}
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, manifestData{ID: AddinID, BaseURL: baseURL}); err != nil {
+	if err := tmpl.Execute(&buf, manifestData{ID: AddinID, BaseURL: baseURL, Version: version}); err != nil {
 		return nil, fmt.Errorf("add-in manifest: %w", err)
 	}
 	return buf.Bytes(), nil
@@ -39,14 +48,40 @@ func RenderManifest(baseURL string) ([]byte, error) {
 
 // WriteSideloadCatalog writes the WEF catalog folder (manifest XML).
 func WriteSideloadCatalog(dir, baseURL string) error {
+	return writeSideloadCatalog(dir, baseURL, "1.0.0")
+}
+
+func sideloadVersion() string {
+	n := time.Now().Unix() % 65535
+	if n < 1 {
+		n = 1
+	}
+	return fmt.Sprintf("1.0.%d", n)
+}
+
+func writeSideloadCatalog(dir, baseURL, version string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	man, err := RenderManifest(baseURL)
+	man, err := renderManifest(baseURL, version)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, catalogManifestName), man, 0o644)
+}
+
+// PersistentCatalogDir is a stable WEF catalog so Shared Folder trust survives
+// across excel-run invocations (temp catalogs change path every run).
+func PersistentCatalogDir() (string, error) {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		return "", fmt.Errorf("LOCALAPPDATA is empty; cannot place WEF catalog")
+	}
+	dir := filepath.Join(base, "calipers", "wef")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 const (

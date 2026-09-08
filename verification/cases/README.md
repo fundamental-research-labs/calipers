@@ -6,12 +6,12 @@ Each case is a directory `tier_{a|b|c}_<feature>/`:
 |------|------|
 | `init.xlsx` | Required input workbook |
 | `script.js` | Optional Office.js. Missing or empty → load+save only (skip script execution) |
-| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (`tier_a`/`tier_b` without Office.js). |
-| `golden.xlsx.meta.json` | Sidecar (`host=excel-win`, Excel version/build, init; load+save omits `script`) |
+| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (`tier_a`/`tier_b` without Office.js) and for `tier_a_simple_set_a1` (`excel-run`). |
+| `golden.xlsx.meta.json` | Sidecar (`host=excel-win`, Excel version/build, init; load+save omits `script`; `excel-run` records `script.js`) |
 
 Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on load+save cases.
 
-Office.js corpus is starting tiny: `tier_a_simple_set_a1/` copies the `tier_a_simple` init and sets `A1`. `tier_a_simple/` stays load+save only. More scripts later.
+Office.js corpus is starting tiny: `tier_a_simple_set_a1/` copies the `tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `tier_a_simple/` stays load+save only. More scripts later.
 
 Original source names are preserved in the tables below.
 

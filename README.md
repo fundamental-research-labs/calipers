@@ -73,7 +73,7 @@ Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a
 | `tier_b_` | Remaining work (charts, pivot, tables/autofilter, CF, validation, comments, drawings, hyperlinks, protection, print). Goldens still useful: Excel keeps these, an engine may drop them. |
 | `tier_c_` | Later / hostile (strict OOXML, password, XML bomb, huge stress, ATP, OLE embed). **Do not** run in the default golden pass. |
 
-A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …) and Office.js cases (`tier_a_simple_set_a1`).
+A default golden pass (`excel-save-pass`) is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …) and Office.js cases (`tier_a_simple_set_a1`). The Office.js case has a committed `excel-run` golden (`script=script.js`).
 
 ## Host
 
@@ -84,15 +84,15 @@ A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tie
 - timeout plus started-PID cleanup
 - `Workbooks.Open` then `SaveAs` xlsx format 51
 
-`excel-run` uses the same COM lifecycle, then a **sideloaded Office.js add-in** (not AppSource, not Office Scripts):
+`excel-run` starts **excel.exe** (COM `CreateObject` does not load Office.js / WebView2), then a **sideloaded Office.js add-in** (not AppSource, not Office Scripts):
 
-- Local HTTP server serves `internal/excel/web/` (task pane + Office.js from CDN)
+- Local HTTP server on `http://localhost:<port>` serves `internal/excel/web/` (task pane + Office.js from CDN)
 - GET `/job` hands the corpus script to the add-in; the add-in `Excel.run`s it; POST `/done` signals completion
 - WEF **Developer** sideload (`HKCU\...\WEF\Developer\<add-in GUID>` = path to the manifest) so the workbook web-extension stamp (`store=developer`, `storeType=Registry`) can auto-open the task pane
 - WEF **TrustedCatalogs** `{GUID}` key with `Id` and a UNC `Url` (`\\localhost\<drive>$\...`) so Insert → Add-ins → Shared Folder can list it
-- Excel is shown (`Visible=true`) so WebView2 can run
+- Catalog lives under `%LOCALAPPDATA%\calipers\wef` so Shared Folder trust survives across runs
 
-First-time Windows box: if the task pane does not appear, Insert → Add-ins → Shared Folder → **Calipers Office.js runner**. The catalog URL is a UNC path to the local folder (ADMIN$ / `C$`). After that, `excel-run` should auto-open it.
+First-time Windows box: if the task pane does not appear, Insert → Add-ins → Shared Folder → **Calipers Office.js runner**. After that, `excel-run` should auto-open it.
 
 Office.js cannot be eval’d through COM. Corpus scripts stay `Excel.run` (not Automate / Office Scripts).
 

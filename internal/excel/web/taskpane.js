@@ -1,4 +1,5 @@
 /* Calipers runner: fetch corpus Office.js from /job, Excel.run it, POST /done. */
+fetch("/loaded").catch(() => {});
 Office.onReady(async (info) => {
   const status = document.getElementById("status");
   const set = (t) => {

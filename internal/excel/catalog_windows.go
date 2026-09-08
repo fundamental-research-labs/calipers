@@ -39,5 +39,21 @@ func registerSideload(catalogDir string) error {
 	if err := cat.SetDWordValue("ShowInMenu", 1); err != nil {
 		return err
 	}
+	// Ask Excel to reload Developer-registered manifests on the next session.
+	if err := dev.SetDWordValue("RefreshAddins", 1); err != nil {
+		return err
+	}
+	return nil
+}
+
+func enableRuntimeLogging(logPath string) error {
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, wefDeveloperKey+`\RuntimeLogging`, registry.ALL_ACCESS)
+	if err != nil {
+		return fmt.Errorf("WEF RuntimeLogging: %w", err)
+	}
+	defer key.Close()
+	if err := key.SetStringValue("", logPath); err != nil {
+		return fmt.Errorf("WEF RuntimeLogging path: %w", err)
+	}
 	return nil
 }
