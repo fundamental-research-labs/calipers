@@ -1,6 +1,7 @@
 package cases
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -154,8 +155,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 91 {
-		t.Fatalf("real corpus: got %d cases, want 91", len(all))
+	if len(all) != 92 {
+		t.Fatalf("real corpus: got %d cases, want 92", len(all))
 	}
 	var nA, nB, nC int
 	for _, c := range all {
@@ -169,8 +170,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		default:
 			t.Errorf("%s: unexpected tier %q", c.ID, c.Tier)
 		}
-		if c.RunScript() || c.ScriptPath != "" {
-			t.Errorf("%s: unexpected script %q (corpus is load+save only)", c.ID, c.ScriptPath)
+		if c.ID != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
+			t.Errorf("%s: unexpected script %q (only tier_a_simple_set_a1 is scripted)", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
 			t.Errorf("%s: init: %v", c.ID, err)
@@ -182,8 +183,59 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("%s: golden xlsx must not live among case inputs yet: %s", c.ID, c.GoldenPath)
 		}
 	}
-	if nA != 57 || nB != 26 || nC != 8 {
-		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/26/8", nA, nB, nC)
+	if nA != 58 || nB != 26 || nC != 8 {
+		t.Fatalf("tier counts a=%d b=%d c=%d, want 58/26/8", nA, nB, nC)
+	}
+
+	var scripted []Case
+	for _, c := range all {
+		if c.RunScript() {
+			scripted = append(scripted, c)
+		}
+	}
+	if len(scripted) != 1 {
+		t.Fatalf("scripted cases: got %d, want 1", len(scripted))
+	}
+	s := scripted[0]
+	if s.ID != "tier_a_simple_set_a1" {
+		t.Fatalf("scripted case = %s, want tier_a_simple_set_a1", s.ID)
+	}
+	if filepath.Base(s.ScriptPath) != ScriptFile {
+		t.Fatalf("ScriptPath=%q", s.ScriptPath)
+	}
+	body, err := os.ReadFile(s.ScriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		t.Fatal("tier_a_simple_set_a1 script.js is empty; discovery would skip it")
+	}
+	if !bytes.Contains(body, []byte("Excel.run")) {
+		t.Fatalf("tier_a_simple_set_a1 script.js is not Office.js Excel.run:\n%s", body)
+	}
+	var simple *Case
+	for i := range all {
+		if all[i].ID == "tier_a_simple" {
+			simple = &all[i]
+			break
+		}
+	}
+	if simple == nil {
+		t.Fatal("missing load+save case tier_a_simple")
+	}
+	if simple.RunScript() || simple.ScriptPath != "" {
+		t.Fatalf("tier_a_simple must stay load+save, got ScriptPath=%q", simple.ScriptPath)
+	}
+	simpleInit, err := os.ReadFile(simple.InitPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptedInit, err := os.ReadFile(s.InitPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(simpleInit, scriptedInit) {
+		t.Fatal("tier_a_simple_set_a1 init.xlsx must be a copy of tier_a_simple")
 	}
 
 	pass := DefaultPass(all)
