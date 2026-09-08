@@ -2,7 +2,7 @@
 
 Goal: keep a spreadsheet engine’s workbook behavior (XLSX I/O now, Office.js later) aligned with **desktop Microsoft Excel**. Oracle is Excel itself, not LibreOffice or another library.
 
-This repo ships the golden generator (`calipers excel-save`) and the init corpus. Engine-vs-Excel semantic/package compare is a later step.
+This repo ships the golden generator (`calipers excel-save`) and the case corpus. Engine-vs-Excel semantic/package compare is a later step.
 
 ## First test: open + save
 
@@ -11,11 +11,12 @@ This repo ships the golden generator (`calipers excel-save`) and the init corpus
 
 ```
 calipers excel-save <init.xlsx> <golden.xlsx>   # Windows + Excel COM only
+# example: verification/cases/tier_a_simple/init.xlsx
 ```
 
 Goldens are generated on **Windows Excel via COM**. Do not generate goldens on Mac — Excel for Mac serializes OOXML differently. CI never runs Excel; it compares engine output to committed goldens.
 
-`excel-save` also writes `<golden.xlsx>.meta.json` (`host=excel-win`, Excel version/build, OS, tool name, input basename, UTC time). Refuse to mix `excel-win` and `excel-mac` goldens.
+`excel-save` also writes `<golden.xlsx>.meta.json` (`host=excel-win`, Excel version/build, OS, tool name, input basename, optional `script` identity, UTC time). Load+save goldens omit `script`. Refuse to mix `excel-win` and `excel-mac` goldens.
 
 ## What to compare
 
@@ -37,11 +38,11 @@ IWorkbookHost.OpenSave(in, out)     # v1: Excel-on-Windows; later the engine CLI
 IWorkbookHost.RunScript(in, js, out)  # later: same Office.js in both hosts
 ```
 
-Excel does **not** execute Office.js through COM. A later sidecar add-in is required to run the same script inside Excel. Until then, Excel `RunScript` is unsupported.
+Excel does **not** execute Office.js through COM. A later sidecar add-in is required to run the same script inside Excel. Until then, Excel `RunScript` is unsupported. Cases with a missing or empty `script.js` skip script execution (load+save only).
 
-## Init corpus (`init_files/`)
+## Cases (`cases/`)
 
-Inputs only — goldens are produced on Windows, not stored here yet. **91 files** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8).
+Each case is `cases/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **91 cases** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8). Goldens are produced on Windows and are not stored here yet. Provenance: [`cases/README.md`](cases/README.md).
 
 | Prefix | Role |
 |--------|------|
@@ -55,7 +56,7 @@ Sources (do not vendor FUSE/SpreadsheetBench — 16k unlabeled real-world files)
 - [SheetJS test_files](http://oss.sheetjs.com/test_files/) (Apache 2.0)
 - [Apache POI test-data/spreadsheet](https://github.com/apache/poi/tree/trunk/test-data/spreadsheet) (Apache 2.0)
 
-Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_password.xlsx` is OLE-encrypted (not a zip); `tier_c_xmlbomb.xlsx` is a parser stress file. A default golden pass skips those hostile files.
+Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_password` is OLE-encrypted (not a zip); `tier_c_xmlbomb` is a parser stress file. A default golden pass skips `tier_c` hostiles.
 
 ## Later tests
 
@@ -70,7 +71,7 @@ Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_passw
 go build -o calipers ./cmd/calipers
 
 # Windows + Excel
-./calipers excel-save verification/init_files/tier_a_simple.xlsx golden.xlsx
+./calipers excel-save verification/cases/tier_a_simple/init.xlsx golden.xlsx
 
 # Off Windows (expected)
 ./calipers excel-save …   # errors: requires Windows + Excel (COM)

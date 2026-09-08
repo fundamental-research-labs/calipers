@@ -18,6 +18,7 @@ type Meta struct {
 	OS           string `json:"os"`
 	Tool         string `json:"tool"`
 	Input        string `json:"input"`
+	Script       string `json:"script,omitempty"` // Office.js identity; omitted when load+save only
 	GeneratedAt  string `json:"generatedAt"`
 }
 
