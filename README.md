@@ -36,6 +36,9 @@ go test ./...
 # Open input in Excel, Save As xlsx (load+save, no Office.js)
 calipers excel-save <input.xlsx> <output.xlsx>
 
+# Default-pass goldens (tier_a and tier_b; skip Office.js and tier_c)
+calipers excel-save-pass [cases-dir]
+
 # Open input, run Office.js inside Excel (sideloaded add-in), Save As
 calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 
@@ -50,6 +53,7 @@ Examples:
 
 ```bash
 calipers excel-save verification/cases/tier_a_simple/init.xlsx verification/cases/tier_a_simple/golden.xlsx
+calipers excel-save-pass
 calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
   verification/cases/tier_a_simple_set_a1/script.js \
   verification/cases/tier_a_simple_set_a1/golden.xlsx
@@ -61,7 +65,7 @@ CI never runs Excel. A Windows machine with Excel generates goldens; those files
 
 ## Cases
 
-Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. **92 cases** (`tier_a_` 58, `tier_b_` 26, `tier_c_` 8). First Office.js case: [`tier_a_simple_set_a1`](verification/cases/tier_a_simple_set_a1/) (sets A1; `tier_a_simple` stays load+save). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8). First Office.js case: [`tier_a_simple_set_a1`](verification/cases/tier_a_simple_set_a1/) (sets A1; `tier_a_simple` stays load+save). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
 
 | Prefix | Role |
 |--------|------|
@@ -69,7 +73,7 @@ Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a
 | `tier_b_` | Remaining work (charts, pivot, tables/autofilter, CF, validation, comments, drawings, hyperlinks, protection, print). Goldens still useful: Excel keeps these, an engine may drop them. |
 | `tier_c_` | Later / hostile (strict OOXML, password, XML bomb, huge stress, ATP, OLE embed). **Do not** run in the default golden pass. |
 
-A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …).
+A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …) and Office.js cases (`tier_a_simple_set_a1`).
 
 ## Host
 

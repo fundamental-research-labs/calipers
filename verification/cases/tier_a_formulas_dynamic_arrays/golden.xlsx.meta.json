@@ -1,0 +1,9 @@
+{
+  "host": "excel-win",
+  "excelVersion": "16.0",
+  "excelBuild": "20326",
+  "os": "windows",
+  "tool": "calipers",
+  "input": "init.xlsx",
+  "generatedAt": "2026-09-08T20:02:17Z"
+}

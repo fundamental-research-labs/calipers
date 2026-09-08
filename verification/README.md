@@ -42,7 +42,7 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Each case is `cases/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **92 cases** (`tier_a_` 58, `tier_b_` 26, `tier_c_` 8). One scripted case so far: `tier_a_simple_set_a1` (copy of `tier_a_simple` init; sets A1). `tier_a_simple` stays load+save. Goldens are produced on Windows and are not stored here yet. Provenance: [`cases/README.md`](cases/README.md).
+Each case is `cases/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8). One scripted case so far: `tier_a_simple_set_a1` (copy of `tier_a_simple` init; sets A1). `tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each case. Not in that set: `tier_a_simple_set_a1` (Office.js) and `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
 
 | Prefix | Role |
 |--------|------|
@@ -72,6 +72,7 @@ go build -o calipers ./cmd/calipers
 
 # Windows + Excel
 ./calipers excel-save verification/cases/tier_a_simple/init.xlsx golden.xlsx
+./calipers excel-save-pass
 ./calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
   verification/cases/tier_a_simple_set_a1/script.js golden.xlsx
 

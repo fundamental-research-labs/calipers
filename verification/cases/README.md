@@ -6,8 +6,8 @@ Each case is a directory `tier_{a|b|c}_<feature>/`:
 |------|------|
 | `init.xlsx` | Required input workbook |
 | `script.js` | Optional Office.js. Missing or empty → load+save only (skip script execution) |
-| `golden.xlsx` | Excel-win oracle (produced on Windows; not committed yet) |
-| `golden.xlsx.meta.json` | Sidecar (`host`, Excel version/build, init, optional `script`) |
+| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (`tier_a`/`tier_b` without Office.js). |
+| `golden.xlsx.meta.json` | Sidecar (`host=excel-win`, Excel version/build, init; load+save omits `script`) |
 
 Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on load+save cases.
 
@@ -31,10 +31,8 @@ Workbooks assembled for basic layout and formula-category coverage.
 | `tier_a_formulas/` | Formulas |
 | `tier_a_unicode/` | Unicode text |
 | `tier_a_multi_sheet/` | Multiple sheets |
-| `tier_a_many_tabs/` | Many worksheets |
 | `tier_a_bg_color_ranges/` | Background color ranges |
 | `tier_a_lbo_model/` | LBO-style model |
-| `tier_b_charts/` | Charts |
 | `tier_c_stress/` | Large stress workbook |
 | `tier_a_formulas_math_basic/` | Math (basic) |
 | `tier_a_formulas_math_trig/` | Math (trig) |
