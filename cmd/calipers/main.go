@@ -1,7 +1,9 @@
-// calipers drives Excel (Windows COM) to produce golden xlsx files.
+// calipers drives Excel (Windows COM) to produce golden xlsx files
+// and verifies mog exports against those goldens.
 //
 //	calipers excel-save <input.xlsx> <output.xlsx>
 //	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
+//	calipers verify [--case ID]...
 //	calipers version
 package main
 
@@ -52,6 +54,8 @@ func run(args []string) error {
 			return fmt.Errorf("usage: calipers excel-run <input.xlsx> <script.js> <output.xlsx>")
 		}
 		return excelRun(args[1], args[2], args[3])
+	case "verify":
+		return verifyCmd(args[1:])
 	case "version":
 		return printVersion()
 	default:
@@ -74,6 +78,11 @@ Commands:
   excel-run <input.xlsx> <script.js> <output.xlsx>
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
       then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
+
+  verify [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+      Load each case in mog, run Office.js when present and non-empty,
+      export a result xlsx (not the golden), and semantically compare
+      to the case golden. Default walk is tier_a and tier_b (skip tier_c).
 
   version
       Print calipers version. On Windows, also print Excel version

@@ -2,7 +2,7 @@
 
 Goal: keep a spreadsheet engine’s workbook behavior (XLSX I/O now, Office.js later) aligned with **desktop Microsoft Excel**. Oracle is Excel itself, not LibreOffice or another library.
 
-This repo ships the golden generator (`calipers excel-save` / `excel-run`) and the case corpus. Engine-vs-Excel semantic/package compare is a later step.
+This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (mog load → optional Office.js → export → semantic compare against the golden).
 
 ## First test: open + save
 
@@ -80,4 +80,8 @@ go build -o calipers ./cmd/calipers
 ./calipers excel-save …   # errors: requires Windows + Excel (COM)
 ./calipers excel-run …    # same error class
 ./calipers version
+
+# Mog vs committed goldens (any OS with the Mog Node SDK)
+./calipers verify --case tier_a_simple
+./calipers verify --cases-dir verification/cases --out-dir /tmp/mog-out --case tier_a_simple
 ```
