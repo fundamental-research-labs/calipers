@@ -67,9 +67,9 @@ Commands:
       Requires Windows + Microsoft Excel. Off Windows this command errors.
 
   excel-save-pass [cases-dir]
-      Run excel-save over the default open+save pass (tier_a and tier_b,
-      skip Office.js cases and tier_c). Writes golden.xlsx + sidecar in
-      each case directory. Default cases-dir is verification/cases.
+      Generate goldens for the default pass (tier_a and tier_b, skip
+      Office.js and tier_c) via the same path as excel-save / excel-run.
+      Default cases-dir is verification/cases.
 
   excel-run <input.xlsx> <script.js> <output.xlsx>
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
@@ -90,11 +90,23 @@ func printUsage() {
 }
 
 func excelSave(inputPath, outputPath string) error {
-	return excelSaveHost(excel.NewHost(), inputPath, outputPath)
+	return generateGolden(excel.NewHost(), inputPath, "", outputPath)
 }
 
-func excelSaveHost(host excel.Host, inputPath, outputPath string) error {
-	if err := host.OpenSave(inputPath, outputPath); err != nil {
+func excelRun(inputPath, scriptPath, outputPath string) error {
+	return generateGolden(excel.NewHost(), inputPath, scriptPath, outputPath)
+}
+
+// generateGolden is the single Excel-win golden path: open the init, run
+// Office.js when scriptPath is non-empty, Save As, write sidecar.
+func generateGolden(host excel.Host, inputPath, scriptPath, outputPath string) error {
+	var err error
+	if scriptPath != "" {
+		err = host.RunScript(inputPath, scriptPath, outputPath)
+	} else {
+		err = host.OpenSave(inputPath, outputPath)
+	}
+	if err != nil {
 		return err
 	}
 	info, err := host.Info()
@@ -104,7 +116,7 @@ func excelSaveHost(host excel.Host, inputPath, outputPath string) error {
 	if info.ID != excel.HostID {
 		return fmt.Errorf("refuse golden host %q (want %s)", info.ID, excel.HostID)
 	}
-	meta := sidecarMeta(info, inputPath, "")
+	meta := sidecarMeta(info, inputPath, scriptPath)
 	if err := golden.Write(outputPath, meta); err != nil {
 		return err
 	}
@@ -116,24 +128,6 @@ func excelSaveHost(host excel.Host, inputPath, outputPath string) error {
 func printf(format string, args ...any) {
 	fmt.Printf(format, args...)
 	_ = os.Stdout.Sync()
-}
-
-func excelRun(inputPath, scriptPath, outputPath string) error {
-	host := excel.NewHost()
-	if err := host.RunScript(inputPath, scriptPath, outputPath); err != nil {
-		return err
-	}
-	info, err := host.Info()
-	if err != nil {
-		return fmt.Errorf("excel info after run: %w", err)
-	}
-	meta := sidecarMeta(info, inputPath, scriptPath)
-	if err := golden.Write(outputPath, meta); err != nil {
-		return err
-	}
-	fmt.Printf("wrote %s\n", outputPath)
-	fmt.Printf("wrote %s\n", golden.PathFor(outputPath))
-	return nil
 }
 
 func sidecarMeta(info excel.HostInfo, inputPath, scriptPath string) golden.Meta {

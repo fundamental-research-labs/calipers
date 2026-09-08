@@ -36,7 +36,7 @@ go test ./...
 # Open input in Excel, Save As xlsx (load+save, no Office.js)
 calipers excel-save <input.xlsx> <output.xlsx>
 
-# Open+save goldens for the default pass (tier_a and tier_b, skip Office.js and tier_c)
+# Default-pass goldens (tier_a and tier_b; skip Office.js and tier_c)
 calipers excel-save-pass [cases-dir]
 
 # Open input, run Office.js inside Excel (sideloaded add-in), Save As
