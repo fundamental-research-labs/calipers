@@ -55,7 +55,7 @@ CI never runs Excel. A Windows machine with Excel generates goldens; those files
 
 ## Cases
 
-Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. **91 cases** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. **91 cases** (`tier_a_` 57, `tier_b_` 26, `tier_c_` 8). First Office.js case: [`tier_a_simple/script.js`](verification/cases/tier_a_simple/script.js) (sets A1). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
 
 | Prefix | Role |
 |--------|------|

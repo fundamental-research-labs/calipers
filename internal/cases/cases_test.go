@@ -1,6 +1,7 @@
 package cases
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -169,8 +170,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		default:
 			t.Errorf("%s: unexpected tier %q", c.ID, c.Tier)
 		}
-		if c.RunScript() || c.ScriptPath != "" {
-			t.Errorf("%s: unexpected script %q (corpus is load+save only)", c.ID, c.ScriptPath)
+		if c.ID != "tier_a_simple" && (c.RunScript() || c.ScriptPath != "") {
+			t.Errorf("%s: unexpected script %q (only tier_a_simple is scripted)", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
 			t.Errorf("%s: init: %v", c.ID, err)
@@ -184,6 +185,33 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	if nA != 57 || nB != 26 || nC != 8 {
 		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/26/8", nA, nB, nC)
+	}
+
+	var scripted []Case
+	for _, c := range all {
+		if c.RunScript() {
+			scripted = append(scripted, c)
+		}
+	}
+	if len(scripted) != 1 {
+		t.Fatalf("scripted cases: got %d, want 1", len(scripted))
+	}
+	s := scripted[0]
+	if s.ID != "tier_a_simple" {
+		t.Fatalf("scripted case = %s, want tier_a_simple", s.ID)
+	}
+	if filepath.Base(s.ScriptPath) != ScriptFile {
+		t.Fatalf("ScriptPath=%q", s.ScriptPath)
+	}
+	body, err := os.ReadFile(s.ScriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		t.Fatal("tier_a_simple script.js is empty; discovery would skip it")
+	}
+	if !bytes.Contains(body, []byte("Excel.run")) {
+		t.Fatalf("tier_a_simple script.js is not Office.js Excel.run:\n%s", body)
 	}
 
 	pass := DefaultPass(all)

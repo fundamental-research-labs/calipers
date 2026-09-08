@@ -11,6 +11,8 @@ Each case is a directory `tier_{a|b|c}_<feature>/`:
 
 Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on load+save cases.
 
+Office.js corpus is starting tiny: `tier_a_simple/script.js` sets `A1` (prove generate+verify on one case). More scripts later.
+
 Original source names are preserved in the tables below.
 
 Tiers: **A** = engine claims support (first goldens). **B** = remaining work (Excel keeps, an engine may drop). **C** = hostile / later; skip in the default pass.
@@ -22,7 +24,7 @@ Workbooks assembled for basic layout and formula-category coverage.
 | Case | Coverage |
 |------|----------|
 | `tier_a_empty/` | Empty workbook |
-| `tier_a_simple/` | Minimal values |
+| `tier_a_simple/` | Minimal values; first Office.js case (`script.js` sets A1) |
 | `tier_a_types/` | Cell types |
 | `tier_a_styled/` | Basic styles |
 | `tier_a_formulas/` | Formulas |
