@@ -36,6 +36,9 @@ type HostInfo struct {
 type Host interface {
 	// OpenSave opens inputPath in Excel and SaveAs's an xlsx to outputPath.
 	OpenSave(inputPath, outputPath string) error
+	// RunScript opens inputPath, runs scriptPath (Office.js) inside Excel via
+	// the sideloaded add-in, and SaveAs's outputPath. Empty script is an error.
+	RunScript(inputPath, scriptPath, outputPath string) error
 	// Info reports OS and, when COM works, Excel version/build.
 	Info() (HostInfo, error)
 	// Available is true when this process can talk to Excel (Windows + ProgID).
@@ -77,6 +80,24 @@ func preparePaths(inputPath, outputPath string) (absIn, absOut string, err error
 		}
 	}
 	return absIn, absOut, nil
+}
+
+func prepareScriptRun(inputPath, scriptPath, outputPath string) (absIn, absScript, absOut string, err error) {
+	absIn, absOut, err = preparePaths(inputPath, outputPath)
+	if err != nil {
+		return "", "", "", err
+	}
+	if strings.TrimSpace(scriptPath) == "" {
+		return "", "", "", fmt.Errorf("script path is required")
+	}
+	absScript, err = filepath.Abs(scriptPath)
+	if err != nil {
+		return "", "", "", fmt.Errorf("script path: %w", err)
+	}
+	if _, err := os.Stat(absScript); err != nil {
+		return "", "", "", fmt.Errorf("script: %w", err)
+	}
+	return absIn, absScript, absOut, nil
 }
 
 func sameFilePath(a, b string) bool {

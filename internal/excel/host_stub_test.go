@@ -17,6 +17,10 @@ func TestStubOpenSave(t *testing.T) {
 	if !errors.Is(err, ErrNotWindows) {
 		t.Fatalf("OpenSave error = %v, want ErrNotWindows", err)
 	}
+	err = h.RunScript("in.xlsx", "script.js", "out.xlsx")
+	if !errors.Is(err, ErrNotWindows) {
+		t.Fatalf("RunScript error = %v, want ErrNotWindows", err)
+	}
 	info, err := h.Info()
 	if !errors.Is(err, ErrNotWindows) {
 		t.Fatalf("Info error = %v, want ErrNotWindows", err)

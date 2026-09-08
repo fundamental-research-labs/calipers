@@ -2,7 +2,7 @@
 
 Goal: keep a spreadsheet engine’s workbook behavior (XLSX I/O now, Office.js later) aligned with **desktop Microsoft Excel**. Oracle is Excel itself, not LibreOffice or another library.
 
-This repo ships the golden generator (`calipers excel-save`) and the case corpus. Engine-vs-Excel semantic/package compare is a later step.
+This repo ships the golden generator (`calipers excel-save` / `excel-run`) and the case corpus. Engine-vs-Excel semantic/package compare is a later step.
 
 ## First test: open + save
 
@@ -34,11 +34,11 @@ Never ignore: `date1904`, sheet order, values, formulas, styles, merges, names.
 ## Hosts (reuse, don’t fork)
 
 ```
-IWorkbookHost.OpenSave(in, out)     # v1: Excel-on-Windows; later the engine CLI
-IWorkbookHost.RunScript(in, js, out)  # later: same Office.js in both hosts
+IWorkbookHost.OpenSave(in, out)     # excel-save: Excel-on-Windows COM
+IWorkbookHost.RunScript(in, js, out)  # excel-run: same Office.js in Excel via sideloaded add-in
 ```
 
-Excel does **not** execute Office.js through COM. A later sidecar add-in is required to run the same script inside Excel. Until then, Excel `RunScript` is unsupported. Cases with a missing or empty `script.js` skip script execution (load+save only).
+Excel does **not** execute Office.js through COM. `excel-run` sideloads a local add-in (WebView2) that `Excel.run`s the corpus script. AppSource install is not required. Cases with a missing or empty `script.js` skip script execution (load+save / `excel-save` only).
 
 ## Cases (`cases/`)
 
@@ -60,7 +60,7 @@ Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_passw
 
 ## Later tests
 
-- Same Office.js script in the engine and Excel → compare workbooks (needs Excel add-in).
+- Same Office.js script in the engine and Excel → compare workbooks (`excel-run` is the Excel side).
 - Formula eval vs Excel cached results.
 - Live dual-host runs (Excel + engine, no golden) on a Windows box.
 
@@ -72,8 +72,11 @@ go build -o calipers ./cmd/calipers
 
 # Windows + Excel
 ./calipers excel-save verification/cases/tier_a_simple/init.xlsx golden.xlsx
+./calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
+  verification/cases/tier_a_simple_set_a1/script.js golden.xlsx
 
 # Off Windows (expected)
 ./calipers excel-save …   # errors: requires Windows + Excel (COM)
+./calipers excel-run …    # same error class
 ./calipers version
 ```

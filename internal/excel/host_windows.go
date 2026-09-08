@@ -3,8 +3,12 @@
 package excel
 
 import (
+	"bytes"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -57,6 +61,63 @@ func (h *windowsHost) OpenSave(inputPath, outputPath string) error {
 	}
 	info, err := runExcelSTA(DefaultTimeout, func(excel *ole.IDispatch) (HostInfo, error) {
 		return openSaveWithExcel(excel, absIn, absOut)
+	})
+	if err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.last = info
+	h.mu.Unlock()
+	return nil
+}
+
+func (h *windowsHost) RunScript(inputPath, scriptPath, outputPath string) error {
+	absIn, absScript, absOut, err := prepareScriptRun(inputPath, scriptPath, outputPath)
+	if err != nil {
+		return err
+	}
+	scriptBytes, err := os.ReadFile(absScript)
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(scriptBytes)) == 0 {
+		return fmt.Errorf("script is empty; use excel-save for load+save")
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return fmt.Errorf("add-in server: %w", err)
+	}
+	baseURL := "http://" + ln.Addr().String()
+	job := newJobServer(string(scriptBytes))
+	httpSrv := &http.Server{Handler: job}
+	go func() { _ = httpSrv.Serve(ln) }()
+	defer func() { _ = httpSrv.Close() }()
+
+	catalogDir, err := os.MkdirTemp("", "calipers-wef-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(catalogDir)
+	if err := WriteSideloadCatalog(catalogDir, baseURL); err != nil {
+		return err
+	}
+	if err := registerTrustedCatalog(catalogDir); err != nil {
+		return err
+	}
+	stamped := filepath.Join(catalogDir, "stamped.xlsx")
+	if err := StampWebExtension(stamped, absIn, AddinID); err != nil {
+		return err
+	}
+
+	scriptErr := make(chan error, 1)
+	go func() {
+		_, err := job.wait(DefaultTimeout)
+		scriptErr <- err
+	}()
+
+	info, err := runExcelSTA(DefaultTimeout+15*time.Second, func(excel *ole.IDispatch) (HostInfo, error) {
+		return openRunSaveWithExcel(excel, stamped, absOut, scriptErr)
 	})
 	if err != nil {
 		return err
@@ -186,6 +247,79 @@ func openSaveWithExcel(excel *ole.IDispatch, absIn, absOut string) (HostInfo, er
 	return info, nil
 }
 
+func openRunSaveWithExcel(excel *ole.IDispatch, absIn, absOut string, scriptErr <-chan error) (HostInfo, error) {
+	info := readExcelInfo(excel)
+	if _, err := oleutil.PutProperty(excel, "Visible", true); err != nil {
+		return info, fmt.Errorf("Excel Visible=true: %w", err)
+	}
+
+	wbProp, err := oleutil.GetProperty(excel, "Workbooks")
+	if err != nil {
+		return info, fmt.Errorf("Excel Workbooks: %w", err)
+	}
+	defer wbProp.Clear()
+	workbooks := wbProp.ToIDispatch()
+	if workbooks == nil {
+		return info, fmt.Errorf("Excel Workbooks is nil")
+	}
+
+	opened, err := oleutil.CallMethod(workbooks, "Open", absIn, int32(0), false)
+	if err != nil {
+		return info, fmt.Errorf("Excel Workbooks.Open %s: %w", absIn, err)
+	}
+	defer opened.Clear()
+	wb := opened.ToIDispatch()
+	if wb == nil {
+		return info, fmt.Errorf("Excel Workbooks.Open returned nil for %s", absIn)
+	}
+	defer func() {
+		_, _ = oleutil.CallMethod(wb, "Close", false)
+	}()
+
+	if err := pumpUntil(scriptErr, DefaultTimeout); err != nil {
+		return info, err
+	}
+
+	if sameFilePath(absIn, absOut) {
+		if _, err := oleutil.CallMethod(wb, "Save"); err != nil {
+			return info, fmt.Errorf("Excel Workbook.Save: %w", err)
+		}
+	} else {
+		if _, err := oleutil.CallMethod(wb, "SaveAs", absOut, xlOpenXMLWorkbook); err != nil {
+			return info, fmt.Errorf("Excel Workbook.SaveAs %s: %w", absOut, err)
+		}
+	}
+	return info, nil
+}
+
+func pumpUntil(done <-chan error, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		pumpMessages()
+		select {
+		case err := <-done:
+			return err
+		default:
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("excel-run timed out waiting for Office.js after %s", timeout)
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+}
+
+func pumpMessages() {
+	var msg [64]byte
+	for {
+		r, _, _ := peekMessage.Call(uintptr(unsafe.Pointer(&msg[0])), 0, 0, 0, 1)
+		if r == 0 {
+			return
+		}
+		_, _, _ = translateMessage.Call(uintptr(unsafe.Pointer(&msg[0])))
+		_, _, _ = dispatchMessage.Call(uintptr(unsafe.Pointer(&msg[0])))
+	}
+}
+
 func readExcelInfo(excel *ole.IDispatch) HostInfo {
 	info := HostInfo{ID: HostID, OS: runtime.GOOS}
 	if v, err := oleutil.GetProperty(excel, "Version"); err == nil {
@@ -230,6 +364,9 @@ func pidFromExcel(excel *ole.IDispatch) uint32 {
 var (
 	user32                   = windows.NewLazySystemDLL("user32.dll")
 	getWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+	peekMessage              = user32.NewProc("PeekMessageW")
+	translateMessage         = user32.NewProc("TranslateMessage")
+	dispatchMessage          = user32.NewProc("DispatchMessageW")
 )
 
 func waitOrKill(pid uint32, wait time.Duration) {
