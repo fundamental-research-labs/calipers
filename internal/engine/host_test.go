@@ -55,6 +55,33 @@ func TestOpenSaveArgv(t *testing.T) {
 	}
 }
 
+func TestOpenSaveDoesNotAcceptStaleOutput(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "in.xlsx")
+	out := filepath.Join(dir, "out.xlsx")
+	if err := os.WriteFile(in, []byte("pk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(out, []byte("stale-export"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := execCommandContext
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		// Exit 0 without creating or replacing the output.
+		return exec.CommandContext(ctx, "true")
+	}
+	defer func() { execCommandContext = old }()
+
+	h := New("/bin/engine")
+	err := h.OpenSave(in, out)
+	if err == nil {
+		t.Fatal("OpenSave succeeded using leftover output; engine did not write the file")
+	}
+	if !strings.Contains(err.Error(), "did not write") {
+		t.Fatalf("error = %v, want did not write", err)
+	}
+}
+
 func TestRunScriptArgv(t *testing.T) {
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in.xlsx")

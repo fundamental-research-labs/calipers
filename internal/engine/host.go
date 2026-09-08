@@ -9,10 +9,12 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -121,5 +123,19 @@ func prepareIO(inputPath, outputPath string) (string, string, error) {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		return "", "", err
 	}
+	// Drop a leftover destination so wrote() cannot treat a previous
+	// export as this run's output when the engine exits 0 without writing.
+	if !sameFilePath(in, out) {
+		if err := os.Remove(out); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", "", fmt.Errorf("remove existing output: %w", err)
+		}
+	}
 	return in, out, nil
+}
+
+func sameFilePath(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
