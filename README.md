@@ -84,10 +84,11 @@ A default golden pass is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tie
 
 - Local HTTP server serves `internal/excel/web/` (task pane + Office.js from CDN)
 - GET `/job` hands the corpus script to the add-in; the add-in `Excel.run`s it; POST `/done` signals completion
-- WEF trusted catalog + workbook web-extension stamp so the task pane can auto-open
+- WEF **Developer** sideload (`HKCU\...\WEF\Developer\<add-in GUID>` = path to the manifest) so the workbook web-extension stamp (`store=developer`, `storeType=Registry`) can auto-open the task pane
+- WEF **TrustedCatalogs** `{GUID}` key with `Id` and a UNC `Url` (`\\localhost\<drive>$\...`) so Insert → Add-ins → Shared Folder can list it
 - Excel is shown (`Visible=true`) so WebView2 can run
 
-First-time Windows box: if the task pane does not appear, Insert → Add-ins → Shared Folder → **Calipers Office.js runner** (catalog is registered under `HKCU\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs`). After that, `excel-run` should auto-open it.
+First-time Windows box: if the task pane does not appear, Insert → Add-ins → Shared Folder → **Calipers Office.js runner**. The catalog URL is a UNC path to the local folder (ADMIN$ / `C$`). After that, `excel-run` should auto-open it.
 
 Office.js cannot be eval’d through COM. Corpus scripts stay `Excel.run` (not Automate / Office Scripts).
 

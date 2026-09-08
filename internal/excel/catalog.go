@@ -49,18 +49,64 @@ func WriteSideloadCatalog(dir, baseURL string) error {
 	return os.WriteFile(filepath.Join(dir, catalogManifestName), man, 0o644)
 }
 
-// CatalogFileURL is the WEF TrustedCatalogs Url value for a local folder.
-func CatalogFileURL(dir string) string {
-	abs, err := filepath.Abs(dir)
+const (
+	wefDeveloperKey = `Software\Microsoft\Office\16.0\WEF\Developer`
+	wefCatalogsRoot = `Software\Microsoft\Office\16.0\WEF\TrustedCatalogs`
+)
+
+// SideloadReg is the WEF registry payload for the sideloaded add-in.
+// Developer matches webextension store=developer storeType=Registry.
+// TrustedCatalogs matches Microsoft's Shared Folder catalog script ({GUID} key, Id, UNC Url).
+type SideloadReg struct {
+	DeveloperKey   string // HKCU\...\WEF\Developer
+	DeveloperName  string // add-in GUID (manifest Id)
+	DeveloperValue string // absolute path to calipers-runner.xml
+	CatalogKey     string // HKCU\...\TrustedCatalogs\{CatalogGUID}
+	CatalogId      string // {CatalogGUID}
+	CatalogURL     string // UNC folder, e.g. \\localhost\C$\...\
+	CatalogFlags   uint32
+}
+
+// NewSideloadReg builds registry values for a catalog directory that already
+// contains calipers-runner.xml.
+func NewSideloadReg(catalogDir string) (SideloadReg, error) {
+	abs, err := filepath.Abs(catalogDir)
 	if err != nil {
-		abs = dir
+		return SideloadReg{}, err
 	}
-	abs = filepath.ToSlash(abs)
-	if !strings.HasPrefix(abs, "/") {
-		abs = "/" + abs
+	return SideloadReg{
+		DeveloperKey:   wefDeveloperKey,
+		DeveloperName:  AddinID,
+		DeveloperValue: filepath.Join(abs, catalogManifestName),
+		CatalogKey:     wefCatalogsRoot + `\{` + CatalogGUID + `}`,
+		CatalogId:      `{` + CatalogGUID + `}`,
+		CatalogURL:     CatalogUNC(abs),
+		CatalogFlags:   1,
+	}, nil
+}
+
+// CatalogUNC is the TrustedCatalogs Url: a UNC share path, not file://.
+// Local NT paths become \\localhost\<drive>$\<rest>\ (ADMIN$ style).
+func CatalogUNC(dir string) string {
+	s := strings.ReplaceAll(dir, "/", `\`)
+	if len(s) >= 2 && s[1] == ':' {
+		drive := strings.ToUpper(s[:1])
+		rest := strings.TrimPrefix(s[2:], `\`)
+		if rest != "" && !strings.HasSuffix(rest, `\`) {
+			rest += `\`
+		}
+		if rest == "" {
+			return `\\localhost\` + drive + `$\`
+		}
+		return `\\localhost\` + drive + `$\` + rest
 	}
-	if !strings.HasSuffix(abs, "/") {
-		abs += "/"
+	abs, err := filepath.Abs(dir)
+	if err == nil {
+		s = strings.ReplaceAll(abs, "/", `\`)
 	}
-	return "file://" + abs
+	s = strings.TrimPrefix(s, `\`)
+	if !strings.HasSuffix(s, `\`) {
+		s += `\`
+	}
+	return `\\localhost\` + s
 }

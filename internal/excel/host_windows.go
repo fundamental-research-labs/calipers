@@ -102,7 +102,7 @@ func (h *windowsHost) RunScript(inputPath, scriptPath, outputPath string) error 
 	if err := WriteSideloadCatalog(catalogDir, baseURL); err != nil {
 		return err
 	}
-	if err := registerTrustedCatalog(catalogDir); err != nil {
+	if err := registerSideload(catalogDir); err != nil {
 		return err
 	}
 	stamped := filepath.Join(catalogDir, "stamped.xlsx")

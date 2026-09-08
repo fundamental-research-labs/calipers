@@ -2,6 +2,6 @@
 
 package excel
 
-func registerTrustedCatalog(string) error {
+func registerSideload(string) error {
 	return ErrNotWindows
 }

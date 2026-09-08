@@ -44,8 +44,41 @@ func TestWriteSideloadCatalog(t *testing.T) {
 	if !strings.Contains(string(data), "http://127.0.0.1:9/taskpane.html") {
 		t.Fatalf("catalog manifest: %s", data)
 	}
-	url := CatalogFileURL(dir)
-	if !strings.HasPrefix(url, "file://") || !strings.HasSuffix(url, "/") {
-		t.Fatalf("CatalogFileURL = %q", url)
+	reg, err := NewSideloadReg(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DeveloperKey != wefDeveloperKey {
+		t.Fatalf("DeveloperKey = %q", reg.DeveloperKey)
+	}
+	if reg.DeveloperName != AddinID {
+		t.Fatalf("DeveloperName = %q, want add-in Id %q", reg.DeveloperName, AddinID)
+	}
+	if filepath.Base(reg.DeveloperValue) != catalogManifestName {
+		t.Fatalf("DeveloperValue = %q", reg.DeveloperValue)
+	}
+	wantKey := wefCatalogsRoot + `\{` + CatalogGUID + `}`
+	if reg.CatalogKey != wantKey {
+		t.Fatalf("CatalogKey = %q, want braced %q", reg.CatalogKey, wantKey)
+	}
+	if reg.CatalogId != `{`+CatalogGUID+`}` {
+		t.Fatalf("CatalogId = %q", reg.CatalogId)
+	}
+	if strings.HasPrefix(reg.CatalogURL, "file:") || !strings.HasPrefix(reg.CatalogURL, `\\`) {
+		t.Fatalf("CatalogURL must be UNC, got %q", reg.CatalogURL)
+	}
+	if reg.CatalogFlags != 1 {
+		t.Fatalf("Flags = %d", reg.CatalogFlags)
+	}
+}
+
+func TestCatalogUNCWindowsPath(t *testing.T) {
+	got := CatalogUNC(`C:\Users\foo\calipers-wef`)
+	want := `\\localhost\C$\Users\foo\calipers-wef\`
+	if got != want {
+		t.Fatalf("CatalogUNC = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "file:") {
+		t.Fatal("UNC must not be a file:// URL")
 	}
 }

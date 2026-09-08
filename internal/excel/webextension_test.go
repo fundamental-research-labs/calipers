@@ -45,6 +45,16 @@ func TestStampWebExtension(t *testing.T) {
 	if !strings.Contains(we, "Office.AutoShowTaskpaneWithDocument") {
 		t.Fatal("webextension must auto-show the task pane")
 	}
+	if !strings.Contains(we, `store="developer"`) || !strings.Contains(we, `storeType="Registry"`) {
+		t.Fatalf("webextension must resolve via WEF\\Developer, got:\n%s", we)
+	}
+	reg, err := NewSideloadReg(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg.DeveloperName != AddinID || !strings.Contains(reg.DeveloperKey, `WEF\Developer`) {
+		t.Fatalf("Developer registration does not match stamp: %+v", reg)
+	}
 	ct := string(found[contentTypesName])
 	if !strings.Contains(ct, "webextension+xml") {
 		t.Fatalf("content types:\n%s", ct)
