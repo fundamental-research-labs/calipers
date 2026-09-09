@@ -153,7 +153,7 @@ func corpusScript(t *testing.T) string {
 	if !ok {
 		t.Fatal("caller")
 	}
-	p := filepath.Join(filepath.Dir(file), "..", "..", "verification", "cases", "tier_a_simple_set_a1", "script.js")
+	p := filepath.Join(filepath.Dir(file), "..", "..", "verification", "cases", "default", "tier_a_simple_set_a1", "script.js")
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		t.Fatal(err)

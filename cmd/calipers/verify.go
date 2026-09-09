@@ -30,7 +30,7 @@ var (
 	}
 )
 
-const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
 
   For each case: run the engine (load init.xlsx, Office.js if present and
   non-empty), export a result xlsx (not the golden), compare its ZIP parts
@@ -43,8 +43,13 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--ca
                     --recalculate after save/run; requires engine support.
                     Unsupported with --engine excel. Default: host policy
                     (Mog preserves imported caches; Excel controls calculation).
+  --suite NAME      run only this suite directory under --cases-dir
+                    (e.g. roundtrip, default)
+  --case ID         run only this case (repeatable or comma-separated;
+                    id is suite/name, e.g. roundtrip/tier_a_simple)
 
-  Default walk is tier_a and tier_b (skip tier_c hostiles).
+  Default walk is every suite directory (roundtrip and default),
+  tier_a and tier_b (skip tier_c hostiles).
   --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
 `
 
@@ -55,8 +60,9 @@ func verifyCmd(args []string) error {
 	recalculate := fs.Bool("recalculate", false, "request recalculation before export (external engines supporting --recalculate only)")
 	casesDir := fs.String("cases-dir", cases.DirName, "verification cases directory")
 	outDir := fs.String("out-dir", "", "directory for engine exports (never the case golden)")
+	suite := fs.String("suite", "", "suite directory to run (default: all suites under --cases-dir)")
 	var caseIDs []string
-	fs.Func("case", "case id to run (repeatable or comma-separated; default: tier_a and tier_b)", func(s string) error {
+	fs.Func("case", "case id to run (suite/name; repeatable or comma-separated; default: tier_a and tier_b)", func(s string) error {
 		for _, id := range strings.Split(s, ",") {
 			id = strings.TrimSpace(id)
 			if id != "" {
@@ -75,7 +81,7 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	if fs.NArg() > 1 {
-		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--case ID]...")
+		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...")
 	}
 	if fs.NArg() == 1 {
 		*casesDir = fs.Arg(0)
@@ -89,7 +95,7 @@ func verifyCmd(args []string) error {
 		policy = "recalculate before export (external engine --recalculate)"
 	}
 	fmt.Fprintf(os.Stdout, "calculation policy: %s\n", policy)
-	return runVerify(host, *casesDir, caseIDs, *outDir, os.Stdout)
+	return runVerifyFilter(host, *casesDir, *suite, caseIDs, *outDir, os.Stdout)
 }
 
 func hostFromSpec(spec string, recalculate bool) (engine, error) {
@@ -161,7 +167,15 @@ type caseOutcome struct {
 }
 
 func runVerify(eng engine, casesDir string, caseIDs []string, outDir string, w io.Writer) error {
-	all, err := cases.Load(casesDir)
+	return runVerifyFilter(eng, casesDir, "", caseIDs, outDir, w)
+}
+
+func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDir string, w io.Writer) error {
+	corpus, err := cases.LoadCorpus(casesDir)
+	if err != nil {
+		return err
+	}
+	all, err := cases.FilterSuite(corpus.Cases, suite, corpus.Suites)
 	if err != nil {
 		return err
 	}
@@ -206,7 +220,7 @@ func runVerify(eng engine, casesDir string, caseIDs []string, outDir string, w i
 }
 
 func verifyOne(eng engine, c cases.Case, outDir string) caseOutcome {
-	exportPath := filepath.Join(outDir, c.ID+".xlsx")
+	exportPath := filepath.Join(outDir, filepath.FromSlash(c.ID)+".xlsx")
 	if filepath.Clean(exportPath) == filepath.Clean(c.GoldenPath) {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: "refusing to overwrite golden"}
 	}
