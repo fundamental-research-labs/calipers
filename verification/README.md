@@ -11,7 +11,7 @@ This repo ships the golden generator (`calipers excel-save` / `excel-run`), the 
 
 ```
 calipers excel-save <init.xlsx> <golden.xlsx>   # Windows + Excel COM only
-# example: verification/cases/roundtrip/tier_a_simple/init.xlsx
+# example: verification/cases/roundtrip/simple/init.xlsx
 ```
 
 Goldens are generated on **Windows Excel via COM**. Do not generate goldens on Mac — Excel for Mac serializes OOXML differently. CI never runs Excel; it compares engine output to committed goldens.
@@ -48,23 +48,18 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Roundtrip and default cases use `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed. Missing or empty `script.js` means load+save only. **105 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8, plus 15 unprefixed scratch).
+Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Case directories are feature names. Missing or empty `script.js` means load+save only. **97 cases** (81 roundtrip, 1 default, 15 scratch). Eight hostiles live in `_disabled/` and are not loaded.
 
 | Suite | Role |
 |-------|------|
 | `roundtrip/` | Load+save package comparison (Excel rewrite vs engine export). |
-| `default/` | Untriaged until categorized (Office.js `tier_a_simple_set_a1`, `tier_c` hostiles). |
+| `default/` | Untriaged until categorized (Office.js `simple_set_a1`). |
 | `scratch/` | Office.js from an empty init (one feature per script). Committed `excel-run` goldens. |
+| `_disabled/` | Hostile / later cases. Kept on disk; not a suite (names starting with `_` are skipped). |
 
-Committed Office.js goldens: `default/tier_a_simple_set_a1` (copy of `roundtrip/tier_a_simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`) and the 15 `scratch/` cases (copy of `roundtrip/tier_a_empty`; each runs one `Excel.run` feature). `roundtrip/tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted `tier_a`/`tier_b` case. Office.js goldens record `script=script.js`; `excel-save-pass` still skips scripted cases (including scratch). Not in that set: `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
+Committed Office.js goldens: `default/simple_set_a1` (copy of `roundtrip/simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`) and the 15 `scratch/` cases (copy of `roundtrip/empty`; each runs one `Excel.run` feature). `roundtrip/simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted case. Office.js goldens record `script=script.js`; `excel-save-pass` still skips scripted cases (including scratch). Hostiles in `_disabled/` are not in that set. Provenance: [`cases/README.md`](cases/README.md).
 
-`calipers verify` walks committed-golden cases (roundtrip, default, and scratch). `--suite scratch` runs only the empty-init Office.js cases; `--suite roundtrip` runs one directory; `--case roundtrip/tier_a_simple` runs one test. Case ids are `suite/name`.
-
-| Prefix | Role |
-|--------|------|
-| `tier_a_` | Engine claims support (values, formulas, styles, sheets, merges, names, freeze, unicode, themes, number formats). First goldens. |
-| `tier_b_` | Known remaining work (charts, pivot, tables/autofilter, CF, validation, comments, drawings, hyperlinks, protection, print). Goldens still useful: Excel keeps these, an engine may drop them. |
-| `tier_c_` | Later / hostile (strict OOXML, password, XML bomb, huge stress, ATP, OLE embed). **Do not** run in the default golden pass. |
+`calipers verify` walks committed-golden cases (roundtrip, default, and scratch). `--suite scratch` runs only the empty-init Office.js cases; `--suite roundtrip` runs one directory; `--case roundtrip/simple` runs one test. Case ids are `suite/name`.
 
 Sources (do not vendor FUSE/SpreadsheetBench — 16k unlabeled real-world files):
 
@@ -72,7 +67,7 @@ Sources (do not vendor FUSE/SpreadsheetBench — 16k unlabeled real-world files)
 - [SheetJS test_files](http://oss.sheetjs.com/test_files/) (Apache 2.0)
 - [Apache POI test-data/spreadsheet](https://github.com/apache/poi/tree/trunk/test-data/spreadsheet) (Apache 2.0)
 
-Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_password` is OLE-encrypted (not a zip); `tier_c_xmlbomb` is a parser stress file. A default golden pass skips `tier_c` hostiles.
+Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `_disabled/password` is OLE-encrypted (not a zip); `_disabled/xmlbomb` is a parser stress file. Hostiles in `_disabled/` are not loaded.
 
 ## Later tests
 
@@ -87,10 +82,10 @@ Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_passw
 go build -o calipers ./cmd/calipers
 
 # Windows + Excel
-./calipers excel-save verification/cases/roundtrip/tier_a_simple/init.xlsx golden.xlsx
+./calipers excel-save verification/cases/roundtrip/simple/init.xlsx golden.xlsx
 ./calipers excel-save-pass
-./calipers excel-run verification/cases/default/tier_a_simple_set_a1/init.xlsx \
-  verification/cases/default/tier_a_simple_set_a1/script.js golden.xlsx
+./calipers excel-run verification/cases/default/simple_set_a1/init.xlsx \
+  verification/cases/default/simple_set_a1/script.js golden.xlsx
 
 # Off Windows (expected)
 ./calipers excel-save …   # errors: requires Windows + Excel (COM)
@@ -101,6 +96,6 @@ go build -o calipers ./cmd/calipers
 ./calipers verify --engine /path/to/engine
 ./calipers verify --engine /path/to/engine --suite roundtrip
 ./calipers verify --engine /path/to/engine --suite scratch
-./calipers verify --engine /path/to/engine --case roundtrip/tier_a_simple
-./calipers verify --engine excel --case roundtrip/tier_a_simple
+./calipers verify --engine /path/to/engine --case roundtrip/simple
+./calipers verify --engine excel --case roundtrip/simple
 ```

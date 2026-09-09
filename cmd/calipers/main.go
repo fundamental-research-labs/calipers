@@ -71,8 +71,8 @@ Commands:
       Requires Windows + Microsoft Excel. Off Windows this command errors.
 
   excel-save-pass [cases-dir]
-      Generate goldens for the default pass (tier_a and tier_b, skip
-      Office.js and tier_c) via the same path as excel-save / excel-run.
+      Generate goldens for the default load+save pass (skip Office.js)
+      via the same path as excel-save / excel-run.
       Default cases-dir is verification/cases.
 
   excel-run <input.xlsx> <script.js> <output.xlsx>
@@ -84,8 +84,8 @@ Commands:
       compare export ZIP parts to the committed Excel golden.
       Binary argv: save <in.xlsx> <out.xlsx>
                    run  <in.xlsx> <script.js> <out.xlsx>
-      Default walk is cases with a committed golden.xlsx (skip tier_c
-      and cases with no golden). --suite NAME runs one suite directory
+      Default walk is cases with a committed golden.xlsx (skip cases
+      with no golden). --suite NAME runs one suite directory
       (e.g. roundtrip, default, scratch); --case suite/name runs one test.
 
   version

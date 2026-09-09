@@ -112,7 +112,7 @@ func TestSidecarMetaScriptOnlyWhenRan(t *testing.T) {
 	if load.Script != "" {
 		t.Fatalf("load+save invented script %q", load.Script)
 	}
-	ran := sidecarMeta(info, filepath.Join("cases", "tier_a_simple_set_a1", "init.xlsx"), filepath.Join("cases", "tier_a_simple_set_a1", "script.js"))
+	ran := sidecarMeta(info, filepath.Join("cases", "simple_set_a1", "init.xlsx"), filepath.Join("cases", "simple_set_a1", "script.js"))
 	if ran.Script != "script.js" {
 		t.Fatalf("script identity = %q", ran.Script)
 	}
