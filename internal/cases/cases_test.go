@@ -219,6 +219,24 @@ func TestLoadIgnoresNonCaseDirs(t *testing.T) {
 	}
 }
 
+func TestLoadSkipsUnderscorePrefixedSuites(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, "default"), "tier_a_ok", "pk", nil)
+	writeCase(t, filepath.Join(root, "_disabled"), "tier_c_bomb", "pk", nil)
+	writeCase(t, filepath.Join(root, "_archive"), "tier_a_old", "pk", nil)
+
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.Cases) != 1 || corpus.Cases[0].ID != "default/tier_a_ok" {
+		t.Fatalf("got %+v", corpus.Cases)
+	}
+	if strings.Join(corpus.Suites, ",") != "default" {
+		t.Fatalf("suites=%v, want only default", corpus.Suites)
+	}
+}
+
 func TestLoadRequiresInit(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "tier_a_missing_init"), 0o755); err != nil {
@@ -399,12 +417,37 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if len(all) != 105 {
-		t.Fatalf("real corpus: got %d cases, want 105", len(all))
+	if len(all) != 97 {
+		t.Fatalf("real corpus: got %d cases, want 97", len(all))
 	}
 	wantSuites := "default,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
 		t.Fatalf("real corpus suites=%v, want %s", corpus.Suites, wantSuites)
+	}
+	disabled := filepath.Join(root, "_disabled")
+	if _, err := os.Stat(disabled); err != nil {
+		t.Fatalf("missing _disabled dir: %v", err)
+	}
+	for _, s := range corpus.Suites {
+		if strings.HasPrefix(s, "_") {
+			t.Errorf("underscore-prefixed directory %q must not be a suite", s)
+		}
+	}
+	disabledEntries, err := os.ReadDir(disabled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nDisabled := 0
+	for _, e := range disabledEntries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "tier_c_") {
+			nDisabled++
+			if _, err := os.Stat(filepath.Join(disabled, e.Name(), GoldenFile)); err == nil {
+				t.Errorf("_disabled/%s: must not have a golden (tier_c)", e.Name())
+			}
+		}
+	}
+	if nDisabled != 8 {
+		t.Fatalf("_disabled tier_c dirs: %d, want 8", nDisabled)
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -472,11 +515,11 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("%s: Dir=%q, want %q", c.ID, c.Dir, wantDir)
 		}
 	}
-	if nA != 57 || nB != 25 || nC != 8 {
-		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/25/8", nA, nB, nC)
+	if nA != 57 || nB != 25 || nC != 0 {
+		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/25/0 (tier_c lives in _disabled)", nA, nB, nC)
 	}
-	if nRT != 81 || nDef != 9 || nScratch != 15 {
-		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 81/9/15", nRT, nDef, nScratch)
+	if nRT != 81 || nDef != 1 || nScratch != 15 {
+		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 81/1/15", nRT, nDef, nScratch)
 	}
 
 	var scripted []Case
@@ -646,15 +689,6 @@ func TestCommittedOpenSaveGoldens(t *testing.T) {
 			t.Errorf("mixed excel goldens: %s is host=%s version=%s build=%s; %s is host=%s version=%s build=%s",
 				c.ID, m.Host, m.ExcelVersion, m.ExcelBuild,
 				firstID, first.Host, first.ExcelVersion, first.ExcelBuild)
-		}
-	}
-
-	for _, c := range all {
-		if c.Tier != TierC {
-			continue
-		}
-		if _, err := os.Stat(c.GoldenPath); err == nil {
-			t.Errorf("%s: must not have a golden (tier_c)", c.ID)
 		}
 	}
 }

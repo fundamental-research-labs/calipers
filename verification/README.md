@@ -48,13 +48,14 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Roundtrip and default cases use `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed. Missing or empty `script.js` means load+save only. **105 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8, plus 15 unprefixed scratch).
+Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Roundtrip and default cases use `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed. Missing or empty `script.js` means load+save only. **97 cases** (`tier_a_` 57, `tier_b_` 25, plus 15 unprefixed scratch). Eight `tier_c_` hostiles live in `_disabled/` and are not loaded.
 
 | Suite | Role |
 |-------|------|
 | `roundtrip/` | Load+save package comparison (Excel rewrite vs engine export). |
-| `default/` | Untriaged until categorized (Office.js `tier_a_simple_set_a1`, `tier_c` hostiles). |
+| `default/` | Untriaged until categorized (Office.js `tier_a_simple_set_a1`). |
 | `scratch/` | Office.js from an empty init (one feature per script). Committed `excel-run` goldens. |
+| `_disabled/` | Hostile / later `tier_c_` cases. Kept on disk; not a suite (names starting with `_` are skipped). |
 
 Committed Office.js goldens: `default/tier_a_simple_set_a1` (copy of `roundtrip/tier_a_simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`) and the 15 `scratch/` cases (copy of `roundtrip/tier_a_empty`; each runs one `Excel.run` feature). `roundtrip/tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted `tier_a`/`tier_b` case. Office.js goldens record `script=script.js`; `excel-save-pass` still skips scripted cases (including scratch). Not in that set: `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
 

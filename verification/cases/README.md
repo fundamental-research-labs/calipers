@@ -1,12 +1,13 @@
 # Verification cases
 
-Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`). Roundtrip and default cases are `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed feature names:
+Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`). Roundtrip and default cases are `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed feature names. Directories whose names start with `_` are not suites.
 
 | Suite | Role |
 |-------|------|
 | [`roundtrip/`](roundtrip/) | Load+save package comparison |
-| [`default/`](default/) | Untriaged (Office.js and `tier_c` hostiles) |
+| [`default/`](default/) | Untriaged (Office.js) |
 | [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; committed `excel-run` goldens) |
+| [`_disabled/`](_disabled/) | Hostile / later `tier_c_` cases (not loaded) |
 
 Each case directory:
 
@@ -63,7 +64,7 @@ Workbooks assembled for basic layout and formula-category coverage.
 | `tier_a_multi_sheet/` | Multiple sheets |
 | `tier_a_bg_color_ranges/` | Background color ranges |
 | `tier_a_lbo_model/` | LBO-style model |
-| `tier_c_stress/` | Large stress workbook |
+| `_disabled/tier_c_stress/` | Large stress workbook |
 | `tier_a_formulas_math_basic/` | Math (basic) |
 | `tier_a_formulas_math_trig/` | Math (trig) |
 | `tier_a_formulas_logical/` | Logical |
@@ -153,13 +154,13 @@ Raw: `https://raw.githubusercontent.com/apache/poi/trunk/test-data/spreadsheet/<
 | `tier_b_header_footer/` | `HeaderFooterComplexFormats.xlsx` |
 | `tier_b_structured_refs/` | `StructuredReferences.xlsx` |
 | `tier_b_textbox/` | `WithTextBox.xlsx` |
-| `tier_c_strict_ooxml/` | `SampleSS.strict.xlsx` |
-| `tier_c_password/` | `protected_passtika.xlsx` (OLE-encrypted, not a zip) |
-| `tier_c_analysis_toolpak/` | `atp.xlsx` |
-| `tier_c_xmlbomb/` | `poc-xmlbomb.xlsx` |
-| `tier_c_corrupted/` | `xlsx-corrupted.xlsx` |
-| `tier_c_embedded_ole/` | `WithEmbeded.xlsx` |
-| `tier_c_custom_xml/` | `CustomXMLMappings.xlsx` |
+| `_disabled/tier_c_strict_ooxml/` | `SampleSS.strict.xlsx` |
+| `_disabled/tier_c_password/` | `protected_passtika.xlsx` (OLE-encrypted, not a zip) |
+| `_disabled/tier_c_analysis_toolpak/` | `atp.xlsx` |
+| `_disabled/tier_c_xmlbomb/` | `poc-xmlbomb.xlsx` |
+| `_disabled/tier_c_corrupted/` | `xlsx-corrupted.xlsx` |
+| `_disabled/tier_c_embedded_ole/` | `WithEmbeded.xlsx` |
+| `_disabled/tier_c_custom_xml/` | `CustomXMLMappings.xlsx` |
 
 Hundreds more in that folder (bug-repro `NNNNN.xlsx`, fuzz crashes). Prefer named files over numbered bugs unless chasing a specific OOXML quirk.
 

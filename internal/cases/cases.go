@@ -5,11 +5,13 @@
 //	verification/cases/<suite>/<case>/
 //
 // Suite names are the directory names on disk; the loader does not hardcode
-// them. A case directory contains a required init.xlsx, an optional
-// script.js, and a dedicated golden.xlsx destination (not mixed into a flat
-// init dump). A missing or empty script means load+save only: skip script
-// execution. The optional tier_{a|b|c}_ prefix classifies a case; other
-// directory names are unprefixed cases when they contain init.xlsx.
+// them. Directories whose names start with '_' are not suites: they stay on
+// disk but are not loaded. A case directory contains a required init.xlsx,
+// an optional script.js, and a dedicated golden.xlsx destination (not mixed
+// into a flat init dump). A missing or empty script means load+save only:
+// skip script execution. The optional tier_{a|b|c}_ prefix classifies a
+// case; other directory names are unprefixed cases when they contain
+// init.xlsx.
 //
 // Load also accepts a flat directory of cases (one suite, used by tests
 // and --cases-dir pointing at a single suite).
@@ -76,7 +78,8 @@ var tierName = regexp.MustCompile(`^tier_([abc])_.+`)
 //
 // If root contains any case directories, it is treated as a single flat
 // suite (Suite left empty). Otherwise every subdirectory is a suite whose
-// own case children are loaded.
+// own case children are loaded. Directories whose names start with '_'
+// are skipped at the suite level (e.g. _disabled).
 func Load(root string) ([]Case, error) {
 	corpus, err := LoadCorpus(root)
 	if err != nil {
@@ -106,6 +109,9 @@ func LoadCorpus(root string) (Corpus, error) {
 			continue
 		}
 		name := e.Name()
+		if strings.HasPrefix(name, "_") {
+			continue
+		}
 		if _, ok := caseTier(root, name); ok {
 			hasCases = true
 			continue
