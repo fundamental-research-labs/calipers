@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/fundamental-research-labs/calipers/internal/excel"
@@ -24,8 +25,8 @@ func TestLoadMissingScriptIsLoadSave(t *testing.T) {
 		t.Fatalf("len=%d, want 1", len(got))
 	}
 	c := got[0]
-	if c.ID != "tier_a_noscript" || c.Tier != TierA {
-		t.Fatalf("id/tier = %s %s", c.ID, c.Tier)
+	if c.ID != "tier_a_noscript" || c.Name != "tier_a_noscript" || c.Tier != TierA {
+		t.Fatalf("id/name/tier = %s %s %s", c.ID, c.Name, c.Tier)
 	}
 	if c.RunScript() || c.ScriptPath != "" {
 		t.Fatalf("missing script should be load+save, got ScriptPath=%q RunScript=%v", c.ScriptPath, c.RunScript())
@@ -228,16 +229,159 @@ func TestLoadRequiresInit(t *testing.T) {
 	}
 }
 
-func TestLoadRealCorpus(t *testing.T) {
-	root := repoCasesDir(t)
+func TestLoadNestedSuites(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_rt", "pk", nil)
+	writeCase(t, filepath.Join(root, SuiteDefault), "tier_a_other", "pk", nil)
+	writeCase(t, filepath.Join(root, SuiteDefault), "tier_c_bomb", "pk", nil)
+	if err := os.Mkdir(filepath.Join(root, "empty_suite"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.Cases) != 3 {
+		t.Fatalf("len=%d, want 3", len(corpus.Cases))
+	}
+	wantSuites := []string{SuiteDefault, "empty_suite", SuiteRoundtrip}
+	if strings.Join(corpus.Suites, ",") != strings.Join(wantSuites, ",") {
+		t.Fatalf("suites=%v, want %v", corpus.Suites, wantSuites)
+	}
+	byID := map[string]Case{}
+	for _, c := range corpus.Cases {
+		byID[c.ID] = c
+		if c.Suite == "" {
+			t.Errorf("%s: suite should be set in nested layout", c.ID)
+		}
+		if c.ID != c.Suite+"/"+c.Name {
+			t.Errorf("%s: ID must be suite/name, Name=%q Suite=%q", c.ID, c.Name, c.Suite)
+		}
+		if !strings.Contains(c.Dir, filepath.FromSlash(c.ID)) {
+			t.Errorf("%s: Dir=%q does not include id", c.ID, c.Dir)
+		}
+	}
+	if byID["roundtrip/tier_a_rt"].Suite != SuiteRoundtrip {
+		t.Fatalf("roundtrip/tier_a_rt suite=%q", byID["roundtrip/tier_a_rt"].Suite)
+	}
+	if byID["default/tier_a_other"].Suite != SuiteDefault || byID["default/tier_c_bomb"].Suite != SuiteDefault {
+		t.Fatalf("default-suite cases: %+v", byID)
+	}
+
+	got, err := FilterSuite(corpus.Cases, SuiteRoundtrip, corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "roundtrip/tier_a_rt" {
+		t.Fatalf("roundtrip filter = %+v", got)
+	}
+	empty, err := FilterSuite(corpus.Cases, "empty_suite", corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty suite = %+v", empty)
+	}
+	_, err = FilterSuite(corpus.Cases, "nope", corpus.Suites)
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unknown suite")) {
+		t.Fatalf("want unknown suite, got %v", err)
+	}
+
+	pass := DefaultPass(corpus.Cases)
+	if len(pass) != 2 {
+		t.Fatalf("default pass across suites len=%d, want 2", len(pass))
+	}
+}
+
+func TestSelectQualifiedID(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_one", "pk", nil)
+	writeCase(t, filepath.Join(root, SuiteDefault), "tier_c_bomb", "pk", nil)
 	all, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	got, err := Select(all, []string{"roundtrip/tier_a_one", "default/tier_c_bomb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "roundtrip/tier_a_one" || got[1].ID != "default/tier_c_bomb" {
+		t.Fatalf("got %+v", got)
+	}
+	bare, err := Select(all, []string{"tier_a_one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bare) != 1 || bare[0].ID != "roundtrip/tier_a_one" {
+		t.Fatalf("unique bare name = %+v", bare)
+	}
+}
+
+func TestSelectAmbiguousID(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_one", "pk", nil)
+	writeCase(t, filepath.Join(root, SuiteDefault), "tier_a_one", "pk", nil)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Select(all, []string{"tier_a_one"})
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("ambiguous case")) {
+		t.Fatalf("want ambiguous case, got %v", err)
+	}
+	got, err := Select(all, []string{"default/tier_a_one"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "default/tier_a_one" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestLoadFlatLayoutLeavesSuiteEmpty(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "tier_a_flat", "pk", nil)
+	if err := os.Mkdir(filepath.Join(root, "not_a_suite"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.Cases) != 1 || corpus.Cases[0].Suite != "" || corpus.Cases[0].ID != "tier_a_flat" || corpus.Cases[0].Name != "tier_a_flat" {
+		t.Fatalf("got %+v", corpus)
+	}
+	if len(corpus.Suites) != 0 {
+		t.Fatalf("flat layout should not report nested suites, got %v", corpus.Suites)
+	}
+}
+
+func TestLoadRealCorpus(t *testing.T) {
+	root := repoCasesDir(t)
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := corpus.Cases
 	if len(all) != 90 {
 		t.Fatalf("real corpus: got %d cases, want 90", len(all))
 	}
-	var nA, nB, nC int
+	if strings.Join(corpus.Suites, ",") != SuiteDefault+","+SuiteRoundtrip {
+		t.Fatalf("real corpus suites=%v, want [%s %s]", corpus.Suites, SuiteDefault, SuiteRoundtrip)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if _, ok := parseTier(e.Name()); ok {
+				t.Errorf("case %s must live under a suite directory, not %s", e.Name(), DirName)
+			}
+		}
+	}
+	var nA, nB, nC, nRT, nDef int
 	for _, c := range all {
 		switch c.Tier {
 		case TierA:
@@ -249,8 +393,22 @@ func TestLoadRealCorpus(t *testing.T) {
 		default:
 			t.Errorf("%s: unexpected tier %q", c.ID, c.Tier)
 		}
-		if c.ID != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
-			t.Errorf("%s: unexpected script %q (only tier_a_simple_set_a1 is scripted)", c.ID, c.ScriptPath)
+		switch c.Suite {
+		case SuiteRoundtrip:
+			nRT++
+			if c.RunScript() {
+				t.Errorf("%s: roundtrip suite must stay load+save, got script %q", c.ID, c.ScriptPath)
+			}
+		case SuiteDefault:
+			nDef++
+		default:
+			t.Errorf("%s: unexpected suite %q", c.ID, c.Suite)
+		}
+		if c.ID != c.Suite+"/"+c.Name {
+			t.Errorf("%s: ID must be suite/name, Name=%q Suite=%q", c.ID, c.Name, c.Suite)
+		}
+		if c.Name != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
+			t.Errorf("%s: unexpected script %q (only default/tier_a_simple_set_a1 is scripted)", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
 			t.Errorf("%s: init: %v", c.ID, err)
@@ -261,9 +419,16 @@ func TestLoadRealCorpus(t *testing.T) {
 		if filepath.Base(c.GoldenPath) != GoldenFile {
 			t.Errorf("%s: golden dest must be %s, got %s", c.ID, GoldenFile, c.GoldenPath)
 		}
+		wantDir := filepath.Join(root, filepath.FromSlash(c.ID))
+		if c.Dir != wantDir {
+			t.Errorf("%s: Dir=%q, want %q", c.ID, c.Dir, wantDir)
+		}
 	}
 	if nA != 57 || nB != 25 || nC != 8 {
 		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/25/8", nA, nB, nC)
+	}
+	if nRT != 81 || nDef != 9 {
+		t.Fatalf("suite counts roundtrip=%d default=%d, want 81/9", nRT, nDef)
 	}
 
 	var scripted []Case
@@ -276,8 +441,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatalf("scripted cases: got %d, want 1", len(scripted))
 	}
 	s := scripted[0]
-	if s.ID != "tier_a_simple_set_a1" {
-		t.Fatalf("scripted case = %s, want tier_a_simple_set_a1", s.ID)
+	if s.ID != "default/tier_a_simple_set_a1" || s.Suite != SuiteDefault || s.Name != "tier_a_simple_set_a1" {
+		t.Fatalf("scripted case = %s, want default/tier_a_simple_set_a1", s.ID)
 	}
 	if filepath.Base(s.ScriptPath) != ScriptFile {
 		t.Fatalf("ScriptPath=%q", s.ScriptPath)
@@ -294,13 +459,23 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	var simple *Case
 	for i := range all {
-		if all[i].ID == "tier_a_simple" {
+		if all[i].ID == "roundtrip/tier_a_simple" {
 			simple = &all[i]
 			break
 		}
 	}
 	if simple == nil {
-		t.Fatal("missing load+save case tier_a_simple")
+		t.Fatal("missing load+save case roundtrip/tier_a_simple")
+	}
+	named, err := Select(all, []string{"roundtrip/tier_a_simple", "default/tier_a_simple_set_a1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(named) != 2 || named[0].ID != "roundtrip/tier_a_simple" || named[1].ID != "default/tier_a_simple_set_a1" {
+		t.Fatalf("Select by suite/name = %+v", named)
+	}
+	if simple.Suite != SuiteRoundtrip {
+		t.Fatalf("tier_a_simple suite=%q, want %s", simple.Suite, SuiteRoundtrip)
 	}
 	if simple.RunScript() || simple.ScriptPath != "" {
 		t.Fatalf("tier_a_simple must stay load+save, got ScriptPath=%q", simple.ScriptPath)
@@ -414,8 +589,8 @@ func TestCommittedScriptedGolden(t *testing.T) {
 			scripted = append(scripted, c)
 		}
 	}
-	if len(scripted) != 1 || scripted[0].ID != "tier_a_simple_set_a1" {
-		t.Fatalf("scripted = %v, want only tier_a_simple_set_a1", scripted)
+	if len(scripted) != 1 || scripted[0].ID != "default/tier_a_simple_set_a1" {
+		t.Fatalf("scripted = %v, want only default/tier_a_simple_set_a1", scripted)
 	}
 	c := scripted[0]
 

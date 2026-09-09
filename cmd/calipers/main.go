@@ -3,7 +3,7 @@
 //
 //	calipers excel-save <input.xlsx> <output.xlsx>
 //	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
-//	calipers verify --engine <path|excel> [--case ID]...
+//	calipers verify --engine <path|excel> [--suite NAME] [--case ID]...
 //	calipers version
 package main
 
@@ -79,12 +79,14 @@ Commands:
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
       then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
 
-  verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+  verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
       compare export ZIP parts to the committed Excel golden.
       Binary argv: save <in.xlsx> <out.xlsx>
                    run  <in.xlsx> <script.js> <out.xlsx>
-      Default walk is tier_a and tier_b (skip tier_c).
+      Default walk is every suite under verification/cases (roundtrip
+      and default), tier_a and tier_b (skip tier_c). --suite NAME runs
+      one suite directory; --case suite/name runs one test.
 
   version
       Print calipers version. On Windows, also print Excel version

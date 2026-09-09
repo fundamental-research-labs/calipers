@@ -289,6 +289,205 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 	}
 }
 
+func TestRunVerifyCLIAllSuites(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_c_bomb", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 2 {
+		t.Fatalf("default verify must run every suite (skip tier_c): opens=%v", fake.opens)
+	}
+	got := openedCaseIDs(fake)
+	if !got["tier_a_rt"] || !got["tier_a_other"] || got["tier_c_bomb"] {
+		t.Fatalf("opened = %v, want roundtrip+default minus tier_c", got)
+	}
+	if !strings.Contains(out, "roundtrip/tier_a_rt") || !strings.Contains(out, "default/tier_a_other") {
+		t.Fatalf("output must name suite-qualified ids:\n%s", out)
+	}
+}
+
+func TestRunVerifyCLICasesDirSingleSuite(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	_, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", filepath.Join(root, cases.SuiteRoundtrip), "--out-dir", outDir})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := openedCaseIDs(fake)
+	if len(fake.opens) != 1 || !got["tier_a_rt"] || got["tier_a_other"] {
+		t.Fatalf("--cases-dir <suite> opened %v", got)
+	}
+}
+
+func TestRunVerifyCLISuiteFlag(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteRoundtrip})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := openedCaseIDs(fake)
+	if len(fake.opens) != 1 || !got["tier_a_rt"] || got["tier_a_other"] {
+		t.Fatalf("--suite roundtrip opened %v", got)
+	}
+	if !strings.Contains(out, "roundtrip/tier_a_rt") {
+		t.Fatalf("output = %s", out)
+	}
+	if strings.Contains(out, "tier_a_other") {
+		t.Fatalf("--suite must not run other suites:\n%s", out)
+	}
+}
+
+func TestRunVerifyCLICaseFlag(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "default/tier_a_other"})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := openedCaseIDs(fake)
+	if len(fake.opens) != 1 || !got["tier_a_other"] || got["tier_a_rt"] {
+		t.Fatalf("--case opened %v", got)
+	}
+	if !strings.Contains(out, "default/tier_a_other") {
+		t.Fatalf("output = %s", out)
+	}
+	if filepath.Base(filepath.Dir(fake.opens[0][1])) != cases.SuiteDefault {
+		t.Fatalf("export must be under suite dir, got %s", fake.opens[0][1])
+	}
+}
+
+func TestRunVerifyCLISuiteAndCase(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	_, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteRoundtrip, "--case", "roundtrip/tier_a_rt"})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := openedCaseIDs(fake)
+	if len(fake.opens) != 1 || !got["tier_a_rt"] {
+		t.Fatalf("--suite --case opened %v", got)
+	}
+
+	fake2 := &fakeEngine{}
+	restore = stubBinaryHost(t, fake2)
+	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteRoundtrip, "--case", "tier_a_other"})
+	restore()
+	if err == nil || !strings.Contains(err.Error(), "unknown case") {
+		t.Fatalf("error = %v, want unknown case outside suite", err)
+	}
+}
+
+func TestRunVerifyCLIUnknownSuite(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	restore := stubBinaryHost(t, &fakeEngine{})
+	err := run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "nope"})
+	restore()
+	if err == nil || !strings.Contains(err.Error(), "unknown suite") {
+		t.Fatalf("error = %v, want unknown suite", err)
+	}
+}
+
+func TestRunVerifyHelpListsSuiteAndCase(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	err = run([]string{"verify", "-h"})
+	_ = w.Close()
+	os.Stdout = old
+	out, _ := io.ReadAll(r)
+	_ = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out, []byte("--suite")) || !bytes.Contains(out, []byte("--case")) {
+		t.Fatalf("verify help must list --suite and --case:\n%s", out)
+	}
+}
+
+func stubBinaryHost(t *testing.T, fake engine) (restore func()) {
+	t.Helper()
+	old := newBinaryHost
+	newBinaryHost = func(path string, recalculate bool) engine {
+		if recalculate {
+			t.Fatal("default CLI must not request recalculation")
+		}
+		return fake
+	}
+	return func() { newBinaryHost = old }
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	fnErr := fn()
+	_ = w.Close()
+	os.Stdout = old
+	out, _ := io.ReadAll(r)
+	_ = r.Close()
+	return string(out), fnErr
+}
+
+func openedCaseIDs(fake *fakeEngine) map[string]bool {
+	got := map[string]bool{}
+	for _, open := range fake.opens {
+		got[filepath.Base(filepath.Dir(open[0]))] = true
+	}
+	return got
+}
+
+func writeNestedVerifyCase(t *testing.T, root, suite, id, value string, script *string) {
+	t.Helper()
+	writeVerifyCase(t, filepath.Join(root, suite), id, value, script)
+}
+
 func setupVerifyDir(t *testing.T) (root, outDir string) {
 	t.Helper()
 	return t.TempDir(), t.TempDir()

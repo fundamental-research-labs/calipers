@@ -1,6 +1,13 @@
 # Verification cases
 
-Each case is a directory `tier_{a|b|c}_<feature>/`:
+Cases live in a **suite** directory (`roundtrip/` or `default/` until further triage), then `tier_{a|b|c}_<feature>/`:
+
+| Suite | Role |
+|-------|------|
+| [`roundtrip/`](roundtrip/) | Load+save package comparison |
+| [`default/`](default/) | Untriaged (Office.js and `tier_c` hostiles) |
+
+Each case directory:
 
 | File | Role |
 |------|------|
@@ -11,7 +18,7 @@ Each case is a directory `tier_{a|b|c}_<feature>/`:
 
 Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on load+save cases.
 
-Office.js corpus is starting tiny: `tier_a_simple_set_a1/` copies the `tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `tier_a_simple/` stays load+save only. More scripts later.
+Office.js corpus is starting tiny: `default/tier_a_simple_set_a1/` copies the `roundtrip/tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `roundtrip/tier_a_simple/` stays load+save only. More scripts later.
 
 Original source names are preserved in the tables below.
 

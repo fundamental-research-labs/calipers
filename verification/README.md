@@ -11,7 +11,7 @@ This repo ships the golden generator (`calipers excel-save` / `excel-run`), the 
 
 ```
 calipers excel-save <init.xlsx> <golden.xlsx>   # Windows + Excel COM only
-# example: verification/cases/tier_a_simple/init.xlsx
+# example: verification/cases/roundtrip/tier_a_simple/init.xlsx
 ```
 
 Goldens are generated on **Windows Excel via COM**. Do not generate goldens on Mac — Excel for Mac serializes OOXML differently. CI never runs Excel; it compares engine output to committed goldens.
@@ -48,7 +48,16 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Each case is `cases/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8). One scripted case so far: `tier_a_simple_set_a1` (copy of `tier_a_simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`). `tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted `tier_a`/`tier_b` case. The Office.js golden is also committed (`script=script.js`); `excel-save-pass` still skips it. Not in that set: `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
+Cases are grouped into **suites** (test categories): `cases/<suite>/tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Missing or empty `script.js` means load+save only. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8).
+
+| Suite | Role |
+|-------|------|
+| `roundtrip/` | Load+save package comparison (Excel rewrite vs engine export). |
+| `default/` | Untriaged until categorized (Office.js `tier_a_simple_set_a1`, `tier_c` hostiles). |
+
+One scripted case so far: `default/tier_a_simple_set_a1` (copy of `roundtrip/tier_a_simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`). `roundtrip/tier_a_simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted `tier_a`/`tier_b` case. The Office.js golden is also committed (`script=script.js`); `excel-save-pass` still skips it. Not in that set: `tier_c` hostiles. Provenance: [`cases/README.md`](cases/README.md).
+
+`calipers verify` walks every suite. `--suite roundtrip` runs one directory; `--case roundtrip/tier_a_simple` runs one test. Case ids are `suite/name`.
 
 | Prefix | Role |
 |--------|------|
@@ -77,10 +86,10 @@ Skip `.xlsm` for v1: COM `SaveAs` format 51 writes non-macro xlsx. `tier_c_passw
 go build -o calipers ./cmd/calipers
 
 # Windows + Excel
-./calipers excel-save verification/cases/tier_a_simple/init.xlsx golden.xlsx
+./calipers excel-save verification/cases/roundtrip/tier_a_simple/init.xlsx golden.xlsx
 ./calipers excel-save-pass
-./calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
-  verification/cases/tier_a_simple_set_a1/script.js golden.xlsx
+./calipers excel-run verification/cases/default/tier_a_simple_set_a1/init.xlsx \
+  verification/cases/default/tier_a_simple_set_a1/script.js golden.xlsx
 
 # Off Windows (expected)
 ./calipers excel-save …   # errors: requires Windows + Excel (COM)
@@ -88,6 +97,8 @@ go build -o calipers ./cmd/calipers
 ./calipers version
 
 # Engine vs committed goldens
-./calipers verify --engine /path/to/engine --case tier_a_simple
-./calipers verify --engine excel --case tier_a_simple
+./calipers verify --engine /path/to/engine
+./calipers verify --engine /path/to/engine --suite roundtrip
+./calipers verify --engine /path/to/engine --case roundtrip/tier_a_simple
+./calipers verify --engine excel --case roundtrip/tier_a_simple
 ```

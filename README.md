@@ -45,11 +45,13 @@ calipers excel-save-pass [cases-dir]
 calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 
 # Engine vs committed Excel goldens (binary host or Excel)
-calipers verify --engine /path/to/engine --case tier_a_simple
-calipers verify --engine excel --case tier_a_simple
+calipers verify --engine /path/to/engine
+calipers verify --engine /path/to/engine --suite roundtrip
+calipers verify --engine /path/to/engine --case roundtrip/tier_a_simple
+calipers verify --engine excel --case roundtrip/tier_a_simple
 
 # Opt in to recalculation with an external engine supporting --recalculate
-calipers verify --engine /path/to/mog --recalculate --case tier_a_formulas
+calipers verify --engine /path/to/mog --recalculate --case roundtrip/tier_a_formulas
 
 # Tool version (on Windows, also prints Excel version when COM works)
 calipers version
@@ -61,14 +63,16 @@ calipers -h
 Examples:
 
 ```bash
-calipers excel-save verification/cases/tier_a_simple/init.xlsx verification/cases/tier_a_simple/golden.xlsx
+calipers excel-save verification/cases/roundtrip/tier_a_simple/init.xlsx verification/cases/roundtrip/tier_a_simple/golden.xlsx
 calipers excel-save-pass
-calipers excel-run verification/cases/tier_a_simple_set_a1/init.xlsx \
-  verification/cases/tier_a_simple_set_a1/script.js \
-  verification/cases/tier_a_simple_set_a1/golden.xlsx
+calipers excel-run verification/cases/default/tier_a_simple_set_a1/init.xlsx \
+  verification/cases/default/tier_a_simple_set_a1/script.js \
+  verification/cases/default/tier_a_simple_set_a1/golden.xlsx
 
 # External engine binary (argv: save <in> <out> / run <in> <script.js> <out>)
-calipers verify --engine ./vendor/mog/target-native/debug/mog --case tier_a_simple
+calipers verify --engine ./vendor/mog/target-native/debug/mog
+calipers verify --engine ./vendor/mog/target-native/debug/mog --suite roundtrip
+calipers verify --engine ./vendor/mog/target-native/debug/mog --case roundtrip/tier_a_simple
 ```
 
 A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, optional `script` identity, UTC `generatedAt`). Load+save goldens omit `script`. `excel-run` records the script basename.
@@ -79,7 +83,9 @@ CI never runs Excel. A Windows machine with Excel generates goldens; those files
 
 ## Cases
 
-Each case lives in [`verification/cases/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8). First Office.js case: [`tier_a_simple_set_a1`](verification/cases/tier_a_simple_set_a1/) (sets A1; `tier_a_simple` stays load+save). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+Each case lives in [`verification/cases/<suite>/<id>/`](verification/cases/) as `tier_{a|b|c}_<feature>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. Suites: [`roundtrip/`](verification/cases/roundtrip/) (load+save package comparison) and [`default/`](verification/cases/default/) (untriaged until categorized). **90 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8; 81 roundtrip, 9 default). First Office.js case: [`tier_a_simple_set_a1`](verification/cases/default/tier_a_simple_set_a1/) (sets A1; `tier_a_simple` stays load+save in roundtrip). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+
+`calipers verify` walks every suite directory. `--suite roundtrip` runs one suite; `--case roundtrip/tier_a_simple` runs one test. Case ids are `suite/name`.
 
 | Prefix | Role |
 |--------|------|
