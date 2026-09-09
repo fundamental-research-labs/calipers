@@ -23,10 +23,14 @@ type engine interface {
 
 var (
 	newExcelHost  = func() engine { return excel.NewHost() }
-	newBinaryHost = func(path string) engine { return enginehost.New(path) }
+	newBinaryHost = func(path string, recalculate bool) engine {
+		h := enginehost.New(path)
+		h.Recalculate = recalculate
+		return h
+	}
 )
 
-const verifyUsage = `calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--case ID]...
 
   For each case: run the engine (load init.xlsx, Office.js if present and
   non-empty), export a result xlsx (not the golden), compare its ZIP parts
@@ -35,6 +39,10 @@ const verifyUsage = `calipers verify --engine <path|excel> [--cases-dir DIR] [--
   --engine excel    Excel COM host (Windows)
   --engine PATH     external binary:  save <in> <out>
                                       run  <in> <script.js> <out>
+  --recalculate     request full recalculation before export by passing
+                    --recalculate after save/run; requires engine support.
+                    Unsupported with --engine excel. Default: host policy
+                    (Mog preserves imported caches; Excel controls calculation).
 
   Default walk is tier_a and tier_b (skip tier_c hostiles).
   --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
@@ -44,6 +52,7 @@ func verifyCmd(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	engineSpec := fs.String("engine", "", "engine binary path, or 'excel'")
+	recalculate := fs.Bool("recalculate", false, "request recalculation before export (external engines supporting --recalculate only)")
 	casesDir := fs.String("cases-dir", cases.DirName, "verification cases directory")
 	outDir := fs.String("out-dir", "", "directory for engine exports (never the case golden)")
 	var caseIDs []string
@@ -66,19 +75,24 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	if fs.NArg() > 1 {
-		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...")
+		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--case ID]...")
 	}
 	if fs.NArg() == 1 {
 		*casesDir = fs.Arg(0)
 	}
-	host, err := hostFromSpec(*engineSpec)
+	host, err := hostFromSpec(*engineSpec, *recalculate)
 	if err != nil {
 		return err
 	}
+	policy := "host default (no recalculation requested)"
+	if *recalculate {
+		policy = "recalculate before export (external engine --recalculate)"
+	}
+	fmt.Fprintf(os.Stdout, "calculation policy: %s\n", policy)
 	return runVerify(host, *casesDir, caseIDs, *outDir, os.Stdout)
 }
 
-func hostFromSpec(spec string) (engine, error) {
+func hostFromSpec(spec string, recalculate bool) (engine, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
 		spec = defaultEngineSpec()
@@ -87,9 +101,12 @@ func hostFromSpec(spec string) (engine, error) {
 	case "":
 		return nil, fmt.Errorf("verify requires --engine <path|excel> (or MOG_BIN / vendor/mog artefact)")
 	case "excel":
+		if recalculate {
+			return nil, fmt.Errorf("--recalculate is unsupported with --engine excel: the Excel host does not explicitly control calculation")
+		}
 		return newExcelHost(), nil
 	default:
-		return newBinaryHost(spec), nil
+		return newBinaryHost(spec, recalculate), nil
 	}
 }
 

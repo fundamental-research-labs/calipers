@@ -79,7 +79,7 @@ Commands:
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
       then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
 
-  verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
+  verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
       compare export ZIP parts to the committed Excel golden.
       Binary argv: save <in.xlsx> <out.xlsx>

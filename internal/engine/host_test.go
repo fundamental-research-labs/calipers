@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -110,5 +111,43 @@ func TestRunScriptArgv(t *testing.T) {
 	}
 	if filepath.Base(got[1]) != "in.xlsx" || filepath.Base(got[2]) != "script.js" || filepath.Base(got[3]) != "out.xlsx" {
 		t.Fatalf("argv = %v", got)
+	}
+}
+
+func TestRecalculateArgv(t *testing.T) {
+	for _, command := range []string{"save", "run"} {
+		t.Run(command, func(t *testing.T) {
+			dir := t.TempDir()
+			in, out, script := filepath.Join(dir, "in.xlsx"), filepath.Join(dir, "out.xlsx"), filepath.Join(dir, "script.js")
+			for _, path := range []string{in, script} {
+				if err := os.WriteFile(path, []byte("fixture"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var got []string
+			old := execCommandContext
+			execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+				got = append([]string{name}, args...)
+				return exec.CommandContext(ctx, "cp", in, out)
+			}
+			t.Cleanup(func() { execCommandContext = old })
+			h := New("/bin/engine")
+			h.Recalculate = true
+			want := []string{h.Path, command, "--recalculate", in}
+			var err error
+			if command == "save" {
+				err = h.OpenSave(in, out)
+			} else {
+				want = append(want, script)
+				err = h.RunScript(in, script, out)
+			}
+			want = append(want, out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("argv = %v, want %v", got, want)
+			}
+		})
 	}
 }
