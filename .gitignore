@@ -22,3 +22,6 @@ tmp/
 
 # Grok worktrees (not part of this tool)
 /worktrees/
+
+# Local engine checkouts used by scripts/verify-mog.sh and scripts/verify-cells.sh
+/vendor/
