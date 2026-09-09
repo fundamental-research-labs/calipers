@@ -291,9 +291,9 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 
 func TestRunVerifyCLIAllSuites(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
-	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_c_bomb", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "tier_c_bomb", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
@@ -318,13 +318,13 @@ func TestRunVerifyCLIAllSuites(t *testing.T) {
 
 func TestRunVerifyCLICasesDirSingleSuite(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
 	_, err := captureStdout(t, func() error {
-		return run([]string{"verify", "--engine", "dummy", "--cases-dir", filepath.Join(root, cases.SuiteRoundtrip), "--out-dir", outDir})
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", filepath.Join(root, "roundtrip"), "--out-dir", outDir})
 	})
 	restore()
 	if err != nil {
@@ -338,13 +338,13 @@ func TestRunVerifyCLICasesDirSingleSuite(t *testing.T) {
 
 func TestRunVerifyCLISuiteFlag(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
 	out, err := captureStdout(t, func() error {
-		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteRoundtrip})
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip"})
 	})
 	restore()
 	if err != nil {
@@ -364,8 +364,8 @@ func TestRunVerifyCLISuiteFlag(t *testing.T) {
 
 func TestRunVerifyCLICaseFlag(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
@@ -383,20 +383,20 @@ func TestRunVerifyCLICaseFlag(t *testing.T) {
 	if !strings.Contains(out, "default/tier_a_other") {
 		t.Fatalf("output = %s", out)
 	}
-	if filepath.Base(filepath.Dir(fake.opens[0][1])) != cases.SuiteDefault {
+	if filepath.Base(filepath.Dir(fake.opens[0][1])) != "default" {
 		t.Fatalf("export must be under suite dir, got %s", fake.opens[0][1])
 	}
 }
 
 func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, cases.SuiteDefault, "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
 	_, err := captureStdout(t, func() error {
-		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteRoundtrip, "--case", "roundtrip/tier_a_rt"})
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip", "--case", "roundtrip/tier_a_rt"})
 	})
 	restore()
 	if err != nil {
@@ -409,16 +409,69 @@ func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 
 	fake2 := &fakeEngine{}
 	restore = stubBinaryHost(t, fake2)
-	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteRoundtrip, "--case", "tier_a_other"})
+	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip", "--case", "tier_a_other"})
 	restore()
 	if err == nil || !strings.Contains(err.Error(), "unknown case") {
 		t.Fatalf("error = %v, want unknown case outside suite", err)
 	}
 }
 
+func TestRunVerifyCLIDefaultSkipsCasesWithoutGolden(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeNestedVerifyCaseNoGolden(t, root, "scratch", "text", "hello", &js)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 1 || len(fake.scripts) != 0 {
+		t.Fatalf("default verify must skip cases without a golden: opens=%v scripts=%v", fake.opens, fake.scripts)
+	}
+	got := openedCaseIDs(fake)
+	if !got["tier_a_rt"] || got["text"] {
+		t.Fatalf("opened = %v, want only the case with a golden", got)
+	}
+	if strings.Contains(out, "scratch/") {
+		t.Fatalf("default walk must not mention cases without a golden:\n%s", out)
+	}
+}
+
+func TestRunVerifyCLISuiteScratch(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeNestedVerifyCase(t, root, "scratch", "text", "hello", &js)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "scratch"})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 0 || len(fake.scripts) != 1 {
+		t.Fatalf("--suite scratch must run the Office.js case: opens=%v scripts=%v", fake.opens, fake.scripts)
+	}
+	if !strings.Contains(out, "scratch/text") {
+		t.Fatalf("output must name scratch id:\n%s", out)
+	}
+	if strings.Contains(out, "tier_a_rt") {
+		t.Fatalf("--suite scratch must not run other suites:\n%s", out)
+	}
+}
+
 func TestRunVerifyCLIUnknownSuite(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
 	restore := stubBinaryHost(t, &fakeEngine{})
 	err := run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "nope"})
 	restore()
@@ -444,6 +497,9 @@ func TestRunVerifyHelpListsSuiteAndCase(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("--suite")) || !bytes.Contains(out, []byte("--case")) {
 		t.Fatalf("verify help must list --suite and --case:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("scratch")) {
+		t.Fatalf("verify help must mention scratch:\n%s", out)
 	}
 }
 
@@ -488,12 +544,22 @@ func writeNestedVerifyCase(t *testing.T, root, suite, id, value string, script *
 	writeVerifyCase(t, filepath.Join(root, suite), id, value, script)
 }
 
+func writeNestedVerifyCaseNoGolden(t *testing.T, root, suite, id, value string, script *string) {
+	t.Helper()
+	writeVerifyCaseFiles(t, filepath.Join(root, suite), id, value, script, false)
+}
+
 func setupVerifyDir(t *testing.T) (root, outDir string) {
 	t.Helper()
 	return t.TempDir(), t.TempDir()
 }
 
 func writeVerifyCase(t *testing.T, root, id, value string, script *string) {
+	t.Helper()
+	writeVerifyCaseFiles(t, root, id, value, script, true)
+}
+
+func writeVerifyCaseFiles(t *testing.T, root, id, value string, script *string, golden bool) {
 	t.Helper()
 	dir := filepath.Join(root, id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -503,8 +569,10 @@ func writeVerifyCase(t *testing.T, root, id, value string, script *string) {
 	if err := os.WriteFile(filepath.Join(dir, cases.InitFile), xlsx, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, cases.GoldenFile), xlsx, 0o644); err != nil {
-		t.Fatal(err)
+	if golden {
+		if err := os.WriteFile(filepath.Join(dir, cases.GoldenFile), xlsx, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if script != nil {
 		if err := os.WriteFile(filepath.Join(dir, cases.ScriptFile), []byte(*script), 0o644); err != nil {

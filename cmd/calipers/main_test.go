@@ -41,6 +41,9 @@ func TestRunHelp(t *testing.T) {
 	if !bytes.Contains(out, []byte("--suite")) || !bytes.Contains(out, []byte("--case")) {
 		t.Fatalf("help must list --suite and --case:\n%s", out)
 	}
+	if !bytes.Contains(out, []byte("scratch")) {
+		t.Fatalf("help must mention scratch:\n%s", out)
+	}
 	if err := run([]string{"--help"}); err != nil {
 		t.Fatalf("run(--help) = %v", err)
 	}

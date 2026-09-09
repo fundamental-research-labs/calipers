@@ -44,12 +44,12 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--ca
                     Unsupported with --engine excel. Default: host policy
                     (Mog preserves imported caches; Excel controls calculation).
   --suite NAME      run only this suite directory under --cases-dir
-                    (e.g. roundtrip, default)
+                    (e.g. roundtrip, default, scratch)
   --case ID         run only this case (repeatable or comma-separated;
                     id is suite/name, e.g. roundtrip/tier_a_simple)
 
-  Default walk is every suite directory (roundtrip and default),
-  tier_a and tier_b (skip tier_c hostiles).
+  Default walk is tier_a and tier_b cases that have a committed
+  golden.xlsx (skip tier_c hostiles and cases with no golden).
   --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
 `
 
@@ -179,9 +179,14 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 	if err != nil {
 		return err
 	}
-	selected, err := cases.Select(all, caseIDs)
-	if err != nil {
-		return err
+	var selected []cases.Case
+	if suite == "" && len(caseIDs) == 0 {
+		selected = cases.GoldenComparePass(all)
+	} else {
+		selected, err = cases.Select(all, caseIDs)
+		if err != nil {
+			return err
+		}
 	}
 	if outDir == "" {
 		outDir = filepath.Join(os.TempDir(), "calipers-verify")

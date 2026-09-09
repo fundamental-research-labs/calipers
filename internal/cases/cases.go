@@ -2,16 +2,17 @@
 //
 // Cases live in suite directories under the corpus root:
 //
-//	verification/cases/<suite>/tier_{a|b|c}_<feature>/
+//	verification/cases/<suite>/<case>/
 //
-// Known suites today: roundtrip (load+save package comparison) and default
-// (untriaged until categorized). A case directory contains a required
-// init.xlsx, an optional script.js, and a dedicated golden.xlsx destination
-// (not mixed into a flat init dump). A missing or empty script means load+save
-// only: skip script execution.
+// Suite names are the directory names on disk; the loader does not hardcode
+// them. A case directory contains a required init.xlsx, an optional
+// script.js, and a dedicated golden.xlsx destination (not mixed into a flat
+// init dump). A missing or empty script means load+save only: skip script
+// execution. The optional tier_{a|b|c}_ prefix classifies a case; other
+// directory names are unprefixed cases when they contain init.xlsx.
 //
-// Load also accepts a flat directory of tier_* cases (one suite, used by
-// tests and --cases-dir pointing at a single suite).
+// Load also accepts a flat directory of cases (one suite, used by tests
+// and --cases-dir pointing at a single suite).
 package cases
 
 import (
@@ -31,12 +32,6 @@ const (
 	InitFile   = "init.xlsx"
 	ScriptFile = "script.js"
 	GoldenFile = "golden.xlsx"
-)
-
-// Suite directory names under DirName.
-const (
-	SuiteRoundtrip = "roundtrip"
-	SuiteDefault   = "default"
 )
 
 // Tier is the case pass class encoded in the directory name.
@@ -76,11 +71,12 @@ func makeID(suite, name string) string {
 var tierName = regexp.MustCompile(`^tier_([abc])_.+`)
 
 // Load walks root for case directories across all suites. Non-case entries
-// are ignored. A tier_* directory without init.xlsx is an error.
+// are ignored. A tier_* directory without init.xlsx is an error. An
+// unprefixed directory is a case only when it contains init.xlsx.
 //
-// If root contains any tier_* case directories, it is treated as a single
-// flat suite (Suite left empty). Otherwise every subdirectory is a suite
-// whose own tier_* children are loaded.
+// If root contains any case directories, it is treated as a single flat
+// suite (Suite left empty). Otherwise every subdirectory is a suite whose
+// own case children are loaded.
 func Load(root string) ([]Case, error) {
 	corpus, err := LoadCorpus(root)
 	if err != nil {
@@ -110,7 +106,7 @@ func LoadCorpus(root string) (Corpus, error) {
 			continue
 		}
 		name := e.Name()
-		if _, ok := parseTier(name); ok {
+		if _, ok := caseTier(root, name); ok {
 			hasCases = true
 			continue
 		}
@@ -149,7 +145,7 @@ func loadSuite(dir, suite string) ([]Case, error) {
 			continue
 		}
 		name := e.Name()
-		tier, ok := parseTier(name)
+		tier, ok := caseTier(dir, name)
 		if !ok {
 			continue
 		}
@@ -163,14 +159,32 @@ func loadSuite(dir, suite string) ([]Case, error) {
 	return out, nil
 }
 
-// DefaultPass is the cases to run unless asked otherwise: tier_a and tier_b.
-// tier_c hostiles are excluded.
+// DefaultPass is the cases to run unless asked otherwise: every case except
+// tier_c hostiles. Unprefixed cases (no tier_{a|b|c}_ name) are included.
+// The default golden-comparison walk uses GoldenComparePass instead.
 func DefaultPass(all []Case) []Case {
 	out := make([]Case, 0, len(all))
 	for _, c := range all {
-		if c.Tier == TierA || c.Tier == TierB {
-			out = append(out, c)
+		if c.Tier == TierC {
+			continue
 		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// GoldenComparePass is the default verify walk: DefaultPass minus cases
+// with no committed golden.xlsx. Package comparison cannot score a case
+// that has no oracle, regardless of suite name.
+func GoldenComparePass(all []Case) []Case {
+	pass := DefaultPass(all)
+	out := make([]Case, 0, len(pass))
+	for _, c := range pass {
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out
 }
@@ -253,6 +267,20 @@ func parseTier(name string) (Tier, bool) {
 		return "", false
 	}
 	return Tier(m[1]), true
+}
+
+// caseTier reports whether name under parent is a case directory and, if so,
+// the tier encoded in the name. tier_* names are always cases (missing
+// init.xlsx is an error in loadOne). Other names are cases only when they
+// contain init.xlsx; they have no tier.
+func caseTier(parent, name string) (Tier, bool) {
+	if tier, ok := parseTier(name); ok {
+		return tier, true
+	}
+	if _, err := os.Stat(filepath.Join(parent, name, InitFile)); err == nil {
+		return "", true
+	}
+	return "", false
 }
 
 func loadOne(dir, name, suite string, tier Tier) (Case, error) {
