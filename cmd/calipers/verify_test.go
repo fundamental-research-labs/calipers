@@ -106,7 +106,7 @@ func TestVerifyExportPathIsNotGolden(t *testing.T) {
 	if filepath.Base(export) != "tier_a_plain.xlsx" {
 		t.Fatalf("export = %s", export)
 	}
-	if !strings.Contains(buf.String(), "PASS") {
+	if !strings.Contains(buf.String(), "PASS (package match)") {
 		t.Fatalf("output = %s", buf.String())
 	}
 }
@@ -137,9 +137,13 @@ func TestVerifyCellValueFailsCompare(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake := &fakeEngine{}
-	err := runVerify(fake, root, []string{"tier_a_mismatch"}, outDir, io.Discard)
+	var buf bytes.Buffer
+	err := runVerify(fake, root, []string{"tier_a_mismatch"}, outDir, &buf)
 	if err == nil {
 		t.Fatal("value mismatch should fail the walk")
+	}
+	if !strings.Contains(buf.String(), "FAIL (differing package parts: 1) xl/worksheets/sheet1.xml") {
+		t.Fatalf("output must identify package-part differences: %s", buf.String())
 	}
 }
 

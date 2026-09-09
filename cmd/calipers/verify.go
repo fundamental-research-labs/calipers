@@ -29,8 +29,8 @@ var (
 const verifyUsage = `calipers verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
 
   For each case: run the engine (load init.xlsx, Office.js if present and
-  non-empty), export a result xlsx (not the golden), semantically compare
-  to the committed Excel golden.
+  non-empty), export a result xlsx (not the golden), compare its ZIP parts
+  to the committed Excel golden. Counts are differing parts, not defects.
 
   --engine excel    Excel COM host (Windows)
   --engine PATH     external binary:  save <in> <out>
@@ -209,9 +209,9 @@ func verifyOne(eng engine, c cases.Case, outDir string) caseOutcome {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
 	}
 	if got.Equal {
-		return caseOutcome{ID: c.ID, Export: exportPath, Status: "pass"}
+		return caseOutcome{ID: c.ID, Export: exportPath, Status: "pass", Detail: "(package match)"}
 	}
-	detail := fmt.Sprintf("(%d diffs)", len(got.Diffs))
+	detail := fmt.Sprintf("(differing package parts: %d)", len(got.Diffs))
 	if len(got.Diffs) > 0 {
 		detail += " " + got.Diffs[0].Part
 	}

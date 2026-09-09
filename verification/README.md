@@ -2,7 +2,7 @@
 
 Goal: keep a spreadsheet engine’s workbook behavior (XLSX I/O now, Office.js later) aligned with **desktop Microsoft Excel**. Oracle is Excel itself, not LibreOffice or another library.
 
-This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (engine load → optional Office.js → export → semantic compare against the golden).
+This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (engine load → optional Office.js → export → package comparison against the golden).
 
 ## First test: open + save
 
@@ -22,10 +22,12 @@ Goldens are generated on **Windows Excel via COM**. Do not generate goldens on M
 
 Excel-saved vs engine-saved is **never** byte-identical (timestamps, `calcId`, style indexes, relationship ids, extra Excel parts).
 
-| Layer | Meaning | Gate |
+| Layer | Meaning | Current status |
 |-------|---------|------|
-| **Semantic** | Cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Pass/fail once a case is green |
-| **Package** | Canonical OOXML after stripping volatile bits | Report now; tighten later |
+| **Semantic** | Resolved cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Not implemented |
+| **Package** | ZIP-part contents after selected metadata exclusions and XML line-ending normalization | Current `verify` PASS/FAIL |
+
+Each difference is one ZIP part, ordered by part name; the first part is not a severity ranking. XML attribute/element ordering, numeric encodings, shared strings, relationship IDs, style IDs, and shared formulas are not resolved or canonicalized. These can produce failures for equivalent workbook content. All character data inside XML is retained, including whitespace-only text and indentation: without content-model information, removing whitespace between tags can erase actual spreadsheet strings.
 
 Always ignore: ZIP mtimes, `docProps` creator/dates, `Application`/`AppVersion`, `workbookPr@calcId`, `xl/calcChain.xml`, printer settings.
 

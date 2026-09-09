@@ -81,7 +81,7 @@ Commands:
 
   verify --engine <path|excel> [--cases-dir DIR] [--out-dir DIR] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
-      semantically compare the export to the committed Excel golden.
+      compare export ZIP parts to the committed Excel golden.
       Binary argv: save <in.xlsx> <out.xlsx>
                    run  <in.xlsx> <script.js> <out.xlsx>
       Default walk is tier_a and tier_b (skip tier_c).

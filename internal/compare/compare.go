@@ -1,8 +1,10 @@
-// Package compare semantically diffs two xlsx workbooks.
+// Package compare reports package-part differences between two xlsx workbooks.
 //
 // Inspired by mog's xlsx-roundtrip archive/XML compare: ZIP contents, not
 // byte-identity. Volatile Excel package bits are ignored; date1904, sheet
 // order, values, types, formulas, styles, merges, names, and freeze are not.
+// Package equality does not establish calculation correctness, and differing
+// parts may contain equivalent workbook semantics serialized differently.
 package compare
 
 import (
@@ -12,10 +14,11 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 )
 
-// Diff is one semantic difference between a mog export and a golden.
+// Diff identifies one differing ZIP part, not a cell or workbook defect.
 type Diff struct {
 	Part   string
 	Detail string
@@ -76,6 +79,7 @@ func Archives(export, golden []byte) (Result, error) {
 		}
 		diffs = append(diffs, Diff{Part: name, Detail: "not in golden, extra in export"})
 	}
+	sort.Slice(diffs, func(i, j int) bool { return diffs[i].Part < diffs[j].Part })
 	return Result{Equal: len(diffs) == 0, Diffs: diffs}, nil
 }
 
@@ -166,7 +170,7 @@ func stripElem(xml, tag string) string {
 }
 
 func stripContentTypeOverrides(xml string) string {
-	re := regexp.MustCompile(`<(Override|Default)\b[^>]*/>`)
+	re := regexp.MustCompile(`[\t\r\n ]*<(Override|Default)\b[^>]*/>`)
 	return re.ReplaceAllStringFunc(xml, func(tag string) string {
 		low := strings.ToLower(tag)
 		if strings.Contains(low, "calcchain.xml") || strings.Contains(low, "printersettings") {
@@ -196,7 +200,7 @@ func volatileOnlyPart(name string, body []byte) bool {
 var relationshipTag = regexp.MustCompile(`<Relationship[\s/>]`)
 
 func stripVolatileRels(xml string) string {
-	re := regexp.MustCompile(`<Relationship\b[^>]*/>`)
+	re := regexp.MustCompile(`[\t\r\n ]*<Relationship\b[^>]*/>`)
 	return re.ReplaceAllStringFunc(xml, func(tag string) string {
 		low := strings.ToLower(tag)
 		if strings.Contains(low, "calcchain") || strings.Contains(low, "printersettings") {
@@ -206,11 +210,11 @@ func stripVolatileRels(xml string) string {
 	})
 }
 
-var betweenTags = regexp.MustCompile(`>\s+<`)
-
 func normalizeXML(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
-	s = betweenTags.ReplaceAllString(s, "><")
-	return strings.TrimSpace(s)
+	// Preserve all character data inside the document, including whitespace-only
+	// text, mixed content, and inherited xml:space="preserve". Without schema
+	// information, indentation cannot safely be distinguished from text content.
+	return strings.Trim(s, " \t\r\n")
 }

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
@@ -127,6 +128,66 @@ func TestArchivesUnequalOnCellValue(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("want sheet1.xml diff, got %v", got.Diffs)
+	}
+}
+
+func TestArchivesPreservesXMLTextWhitespace(t *testing.T) {
+	for _, tc := range []struct {
+		name, part, export, golden string
+	}{
+		{"inline string", "xl/worksheets/sheet1.xml", sheetXML(" "), sheetXML("")},
+		{"tab and newline", "xl/worksheets/sheet1.xml", sheetXML("\t\n"), sheetXML("")},
+		{"shared string", "xl/sharedStrings.xml", `<sst><si><t> </t></si></sst>`, `<sst><si><t></t></si></sst>`},
+		{"explicit preserve", "xl/sharedStrings.xml", `<sst><si><t xml:space="preserve"> </t></si></sst>`, `<sst><si><t xml:space="preserve"></t></si></sst>`},
+		{"inherited preserve", "xl/sharedStrings.xml", `<sst xml:space="preserve"><si><t> </t></si></sst>`, `<sst xml:space="preserve"><si><t></t></si></sst>`},
+		{"drawing text", "xl/drawings/drawing1.xml", `<a:t xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"> </a:t>`, `<a:t xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"></a:t>`},
+		{"mixed content", "customXml/item1.xml", `<p><b/> <b/></p>`, `<p><b/><b/></p>`},
+		{"CDATA", "customXml/item1.xml", `<p><![CDATA[> <]]></p>`, `<p><![CDATA[><]]></p>`},
+		{"leading text whitespace", "xl/worksheets/sheet1.xml", sheetXML(" hello"), sheetXML("hello")},
+		{"trailing text whitespace", "xl/worksheets/sheet1.xml", sheetXML("hello "), sheetXML("hello")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Archives(mustXLSX(t, map[string]string{tc.part: tc.export}), mustXLSX(t, map[string]string{tc.part: tc.golden}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Equal || len(got.Diffs) != 1 || got.Diffs[0].Part != tc.part {
+				t.Fatalf("text whitespace must remain a difference: %+v", got)
+			}
+		})
+	}
+}
+
+func TestArchivesNormalizesXMLLineEndingsAndOuterWhitespace(t *testing.T) {
+	a := mustXLSX(t, map[string]string{"xl/sharedStrings.xml": " \n<sst>\r\n<si><t>\rtext\r\n</t></si>\r\n</sst>\t"})
+	b := mustXLSX(t, map[string]string{"xl/sharedStrings.xml": "<sst>\n<si><t>\ntext\n</t></si>\n</sst>"})
+	got, err := Archives(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("XML line endings and outer whitespace should normalize: %+v", got)
+	}
+}
+
+func TestArchivesOrdersMissingExtraAndChangedPartsTogether(t *testing.T) {
+	export := mustXLSX(t, map[string]string{
+		"a-extra.xml": `<extra/>`, "m-changed.xml": `<value>1</value>`, "z-missing.xml": `<same/>`,
+	})
+	golden := mustXLSX(t, map[string]string{
+		"b-missing.xml": `<missing/>`, "m-changed.xml": `<value>2</value>`, "z-missing.xml": `<same/>`,
+	})
+	want := []Diff{
+		{Part: "a-extra.xml", Detail: "not in golden, extra in export"},
+		{Part: "b-missing.xml", Detail: "present in golden, missing in export"},
+		{Part: "m-changed.xml", Detail: "xml content differs"},
+	}
+	got, err := Archives(export, golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Diffs, want) {
+		t.Fatalf("diffs = %+v, want %+v", got.Diffs, want)
 	}
 }
 

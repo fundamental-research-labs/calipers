@@ -8,6 +8,8 @@ v1 is **Windows-only**. Goldens are produced via Excel COM (`Excel.Application`)
 
 This repository is the verification tool and its init corpus. It is not a spreadsheet engine.
 
+`verify` currently compares ZIP parts after selected metadata exclusions and XML line-ending normalization. PASS means a package match under those rules; FAIL counts differing parts, not cells or proven defects. Text-node whitespace is preserved. A resolved workbook semantic comparator is not yet implemented; see [comparison scope](verification/README.md#what-to-compare).
+
 ## Requirements
 
 - Go 1.22+
