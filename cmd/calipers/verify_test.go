@@ -176,17 +176,9 @@ func TestVerifyRecalculateRejectsExcelBeforeCreatingHost(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { newExcelHost = old })
-	for _, explicit := range []bool{true, false} {
-		args := []string{"verify", "--recalculate", "--cases-dir", t.TempDir()}
-		if explicit {
-			args = append(args, "--engine", "excel")
-		} else {
-			t.Setenv("MOG_BIN", "excel")
-		}
-		err := run(args)
-		if err == nil || !strings.Contains(err.Error(), "--recalculate is unsupported with --engine excel") {
-			t.Fatalf("error = %v, want unsupported Excel calculation policy", err)
-		}
+	err := run([]string{"verify", "--engine", "excel", "--recalculate", "--cases-dir", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "--recalculate is unsupported with --engine excel") {
+		t.Fatalf("error = %v, want unsupported Excel calculation policy", err)
 	}
 }
 
@@ -229,23 +221,70 @@ func TestVerifyCLIRecalculatePolicy(t *testing.T) {
 	}
 }
 
-func TestHostFromSpecRequiresEngine(t *testing.T) {
-	oldBin := os.Getenv("MOG_BIN")
-	oldEng := os.Getenv("ENGINE")
-	_ = os.Unsetenv("MOG_BIN")
-	_ = os.Unsetenv("ENGINE")
-	defer func() {
-		_ = os.Setenv("MOG_BIN", oldBin)
-		_ = os.Setenv("ENGINE", oldEng)
-	}()
-	// Force no vendor artefact by using a temp cwd... hostFromSpec("", false) uses cwd.
-	// An explicit empty spec with no env still may find vendor/mog; that's ok
-	// if the artefact exists. Require error only when defaultEngineSpec is empty.
-	if defaultEngineSpec() != "" {
-		t.Skip("vendor/mog or MOG_BIN is present")
+func TestVerifyRequiresEngineEvenWhenMogBinSet(t *testing.T) {
+	t.Setenv("MOG_BIN", "/pretend/mog")
+	t.Setenv("ENGINE", "/pretend/engine")
+	err := run([]string{"verify", "--cases-dir", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "verify requires --engine") {
+		t.Fatalf("error = %v, want required --engine", err)
 	}
-	if _, err := hostFromSpec("", false); err == nil {
-		t.Fatal("expected missing --engine error")
+	if strings.Contains(err.Error(), "MOG_BIN") || strings.Contains(err.Error(), "vendor/mog") {
+		t.Fatalf("error must not suggest env/vendor fallback: %v", err)
+	}
+}
+
+func TestHostFromSpecRequiresEngine(t *testing.T) {
+	t.Setenv("MOG_BIN", "/pretend/mog")
+	t.Setenv("ENGINE", "/pretend/engine")
+	_, err := hostFromSpec("", false)
+	if err == nil || !strings.Contains(err.Error(), "verify requires --engine") {
+		t.Fatalf("error = %v, want required --engine", err)
+	}
+	if strings.Contains(err.Error(), "MOG_BIN") || strings.Contains(err.Error(), "vendor/mog") {
+		t.Fatalf("error must not suggest env/vendor fallback: %v", err)
+	}
+}
+
+func TestHostFromSpecPathConstructsBinaryHost(t *testing.T) {
+	t.Setenv("MOG_BIN", "/from-env/mog")
+	old := newBinaryHost
+	var gotPath string
+	var gotRecalc bool
+	newBinaryHost = func(path string, recalculate bool) engine {
+		gotPath = path
+		gotRecalc = recalculate
+		return &fakeEngine{}
+	}
+	t.Cleanup(func() { newBinaryHost = old })
+	h, err := hostFromSpec("/path/to/engine", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h == nil {
+		t.Fatal("nil host")
+	}
+	if gotPath != "/path/to/engine" || !gotRecalc {
+		t.Fatalf("path=%q recalc=%v, want /path/to/engine true", gotPath, gotRecalc)
+	}
+}
+
+func TestVerifyCLIEngineFlagIgnoresMogBin(t *testing.T) {
+	t.Setenv("MOG_BIN", "/from-env/mog")
+	old := newBinaryHost
+	var gotPath string
+	newBinaryHost = func(path string, recalculate bool) engine {
+		gotPath = path
+		return &fakeEngine{}
+	}
+	t.Cleanup(func() { newBinaryHost = old })
+	_, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "/from-flag/engine", "--cases-dir", t.TempDir()})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/from-flag/engine" {
+		t.Fatalf("path = %q, want /from-flag/engine (MOG_BIN must not select the engine)", gotPath)
 	}
 }
 
@@ -499,6 +538,15 @@ func TestRunVerifyHelpListsSuiteAndCase(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("scratch")) {
 		t.Fatalf("verify help must mention scratch:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("--engine is required")) {
+		t.Fatalf("verify help must say --engine is required:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("may be omitted")) {
+		t.Fatalf("verify help must not say --engine may be omitted:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("MOG_BIN")) || bytes.Contains(out, []byte("vendor/mog")) {
+		t.Fatalf("verify help must not name Mog env/vendor as a default engine:\n%s", out)
 	}
 }
 
