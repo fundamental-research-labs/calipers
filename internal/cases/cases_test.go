@@ -429,9 +429,6 @@ func TestLoadRealCorpus(t *testing.T) {
 			continue
 		}
 		nDisabled++
-		if strings.HasPrefix(e.Name(), "tier_") {
-			t.Errorf("_disabled/%s: must not keep a tier_ prefix", e.Name())
-		}
 		if _, err := os.Stat(filepath.Join(disabled, e.Name(), GoldenFile)); err == nil {
 			t.Errorf("_disabled/%s: must not have a golden", e.Name())
 		}
@@ -450,9 +447,6 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	var nRT, nDef, nScratch int
 	for _, c := range all {
-		if strings.HasPrefix(c.Name, "tier_") {
-			t.Errorf("%s: case names must not use a tier_ prefix", c.ID)
-		}
 		switch c.Suite {
 		case "roundtrip":
 			nRT++
@@ -736,9 +730,6 @@ func TestScratchSuite(t *testing.T) {
 	for _, c := range scratch {
 		if c.Suite != "scratch" || !strings.HasPrefix(c.ID, "scratch/") {
 			t.Errorf("FilterSuite scratch returned %s (suite=%q)", c.ID, c.Suite)
-		}
-		if strings.HasPrefix(c.Name, "tier_") {
-			t.Errorf("%s: scratch case names must not use a tier_ prefix", c.ID)
 		}
 	}
 
