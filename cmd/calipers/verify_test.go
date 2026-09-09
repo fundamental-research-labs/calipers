@@ -416,6 +416,59 @@ func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 	}
 }
 
+func TestRunVerifyCLIDefaultSkipsScratch(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeNestedVerifyCase(t, root, cases.SuiteScratch, "text", "hello", &js)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 1 || len(fake.scripts) != 0 {
+		t.Fatalf("default verify must skip scratch: opens=%v scripts=%v", fake.opens, fake.scripts)
+	}
+	got := openedCaseIDs(fake)
+	if !got["tier_a_rt"] || got["text"] {
+		t.Fatalf("opened = %v, want roundtrip only", got)
+	}
+	if strings.Contains(out, "scratch/") {
+		t.Fatalf("default walk must not mention scratch:\n%s", out)
+	}
+}
+
+func TestRunVerifyCLISuiteScratch(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeNestedVerifyCase(t, root, cases.SuiteScratch, "text", "hello", &js)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", cases.SuiteScratch})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 0 || len(fake.scripts) != 1 {
+		t.Fatalf("--suite scratch must run the Office.js case: opens=%v scripts=%v", fake.opens, fake.scripts)
+	}
+	if !strings.Contains(out, "scratch/text") {
+		t.Fatalf("output must name scratch id:\n%s", out)
+	}
+	if strings.Contains(out, "tier_a_rt") {
+		t.Fatalf("--suite scratch must not run other suites:\n%s", out)
+	}
+}
+
 func TestRunVerifyCLIUnknownSuite(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
 	writeNestedVerifyCase(t, root, cases.SuiteRoundtrip, "tier_a_rt", "hello", nil)
@@ -444,6 +497,9 @@ func TestRunVerifyHelpListsSuiteAndCase(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("--suite")) || !bytes.Contains(out, []byte("--case")) {
 		t.Fatalf("verify help must list --suite and --case:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("scratch")) {
+		t.Fatalf("verify help must mention scratch:\n%s", out)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -339,6 +340,27 @@ func TestSelectAmbiguousID(t *testing.T) {
 	}
 }
 
+func TestGoldenComparePassSkipsScratch(t *testing.T) {
+	root := t.TempDir()
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_rt", "pk", nil)
+	writeCase(t, filepath.Join(root, SuiteScratch), "text", "pk", &js)
+	writeCase(t, filepath.Join(root, SuiteScratch), "tier_c_bomb", "pk", &js)
+
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := DefaultPass(all)
+	if len(def) != 2 {
+		t.Fatalf("DefaultPass len=%d, want 2 (roundtrip a + unprefixed scratch)", len(def))
+	}
+	got := GoldenComparePass(all)
+	if len(got) != 1 || got[0].ID != "roundtrip/tier_a_rt" {
+		t.Fatalf("GoldenComparePass = %+v, want only roundtrip/tier_a_rt", got)
+	}
+}
+
 func TestLoadFlatLayoutLeavesSuiteEmpty(t *testing.T) {
 	root := t.TempDir()
 	writeCase(t, root, "tier_a_flat", "pk", nil)
@@ -364,11 +386,12 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if len(all) != 90 {
-		t.Fatalf("real corpus: got %d cases, want 90", len(all))
+	if len(all) != 105 {
+		t.Fatalf("real corpus: got %d cases, want 105", len(all))
 	}
-	if strings.Join(corpus.Suites, ",") != SuiteDefault+","+SuiteRoundtrip {
-		t.Fatalf("real corpus suites=%v, want [%s %s]", corpus.Suites, SuiteDefault, SuiteRoundtrip)
+	wantSuites := SuiteDefault + "," + SuiteRoundtrip + "," + SuiteScratch
+	if strings.Join(corpus.Suites, ",") != wantSuites {
+		t.Fatalf("real corpus suites=%v, want [%s %s %s]", corpus.Suites, SuiteDefault, SuiteRoundtrip, SuiteScratch)
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -381,7 +404,7 @@ func TestLoadRealCorpus(t *testing.T) {
 			}
 		}
 	}
-	var nA, nB, nC, nRT, nDef int
+	var nA, nB, nC, nRT, nDef, nScratch int
 	for _, c := range all {
 		switch c.Tier {
 		case TierA:
@@ -390,6 +413,10 @@ func TestLoadRealCorpus(t *testing.T) {
 			nB++
 		case TierC:
 			nC++
+		case "":
+			if c.Suite != SuiteScratch {
+				t.Errorf("%s: unexpected empty tier", c.ID)
+			}
 		default:
 			t.Errorf("%s: unexpected tier %q", c.ID, c.Tier)
 		}
@@ -401,14 +428,22 @@ func TestLoadRealCorpus(t *testing.T) {
 			}
 		case SuiteDefault:
 			nDef++
+		case SuiteScratch:
+			nScratch++
+			if !c.RunScript() {
+				t.Errorf("%s: scratch case must be scripted", c.ID)
+			}
+			if c.Tier != "" || strings.HasPrefix(c.Name, "tier_") {
+				t.Errorf("%s: scratch case must not use a tier_ prefix (tier=%q name=%q)", c.ID, c.Tier, c.Name)
+			}
 		default:
 			t.Errorf("%s: unexpected suite %q", c.ID, c.Suite)
 		}
 		if c.ID != c.Suite+"/"+c.Name {
 			t.Errorf("%s: ID must be suite/name, Name=%q Suite=%q", c.ID, c.Name, c.Suite)
 		}
-		if c.Name != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
-			t.Errorf("%s: unexpected script %q (only default/tier_a_simple_set_a1 is scripted)", c.ID, c.ScriptPath)
+		if c.Suite != SuiteScratch && c.Name != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
+			t.Errorf("%s: unexpected script %q (only default/tier_a_simple_set_a1 and scratch/* are scripted)", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
 			t.Errorf("%s: init: %v", c.ID, err)
@@ -427,23 +462,28 @@ func TestLoadRealCorpus(t *testing.T) {
 	if nA != 57 || nB != 25 || nC != 8 {
 		t.Fatalf("tier counts a=%d b=%d c=%d, want 57/25/8", nA, nB, nC)
 	}
-	if nRT != 81 || nDef != 9 {
-		t.Fatalf("suite counts roundtrip=%d default=%d, want 81/9", nRT, nDef)
+	if nRT != 81 || nDef != 9 || nScratch != 15 {
+		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 81/9/15", nRT, nDef, nScratch)
 	}
 
 	var scripted []Case
-	for _, c := range all {
+	var simpleSetA1 *Case
+	for i := range all {
+		c := &all[i]
 		if c.RunScript() {
-			scripted = append(scripted, c)
+			scripted = append(scripted, *c)
+		}
+		if c.ID == "default/tier_a_simple_set_a1" {
+			simpleSetA1 = c
 		}
 	}
-	if len(scripted) != 1 {
-		t.Fatalf("scripted cases: got %d, want 1", len(scripted))
+	if len(scripted) != 1+nScratch {
+		t.Fatalf("scripted cases: got %d, want %d (default/tier_a_simple_set_a1 + scratch)", len(scripted), 1+nScratch)
 	}
-	s := scripted[0]
-	if s.ID != "default/tier_a_simple_set_a1" || s.Suite != SuiteDefault || s.Name != "tier_a_simple_set_a1" {
-		t.Fatalf("scripted case = %s, want default/tier_a_simple_set_a1", s.ID)
+	if simpleSetA1 == nil || !simpleSetA1.RunScript() || simpleSetA1.Suite != SuiteDefault || simpleSetA1.Name != "tier_a_simple_set_a1" {
+		t.Fatalf("scripted case default/tier_a_simple_set_a1 missing or not runnable")
 	}
+	s := *simpleSetA1
 	if filepath.Base(s.ScriptPath) != ScriptFile {
 		t.Fatalf("ScriptPath=%q", s.ScriptPath)
 	}
@@ -493,8 +533,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 
 	pass := DefaultPass(all)
-	if len(pass) != nA+nB {
-		t.Fatalf("default pass len=%d, want %d (exclude tier_c)", len(pass), nA+nB)
+	if len(pass) != nA+nB+nScratch {
+		t.Fatalf("default pass len=%d, want %d (exclude tier_c, include unprefixed scratch)", len(pass), nA+nB+nScratch)
 	}
 	for _, c := range pass {
 		if c.Tier == TierC {
@@ -505,9 +545,22 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatalf("default pass %d vs all-c %d", len(pass), len(all)-nC)
 	}
 
+	goldenPass := GoldenComparePass(all)
+	if len(goldenPass) != nA+nB {
+		t.Fatalf("golden-compare pass len=%d, want %d (a/b minus scratch)", len(goldenPass), nA+nB)
+	}
+	for _, c := range goldenPass {
+		if c.Suite == SuiteScratch {
+			t.Errorf("golden-compare pass included scratch %s", c.ID)
+		}
+		if c.Tier == TierC {
+			t.Errorf("golden-compare pass included hostile %s", c.ID)
+		}
+	}
+
 	openSave := OpenSavePass(all)
-	if len(openSave) != nA+nB-len(scripted) {
-		t.Fatalf("open+save pass len=%d, want %d (default minus scripted)", len(openSave), nA+nB-len(scripted))
+	if len(openSave) != nA+nB+nScratch-len(scripted) {
+		t.Fatalf("open+save pass len=%d, want %d (default minus scripted)", len(openSave), nA+nB+nScratch-len(scripted))
 	}
 	for _, c := range openSave {
 		if c.RunScript() {
@@ -515,6 +568,22 @@ func TestLoadRealCorpus(t *testing.T) {
 		}
 		if c.Tier == TierC {
 			t.Errorf("open+save pass included hostile %s", c.ID)
+		}
+		if c.Suite == SuiteScratch {
+			t.Errorf("open+save pass included scratch %s", c.ID)
+		}
+	}
+
+	bySuite, err := FilterSuite(all, SuiteScratch, corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bySuite) != nScratch {
+		t.Fatalf("FilterSuite scratch len=%d, want %d", len(bySuite), nScratch)
+	}
+	for _, c := range bySuite {
+		if c.Suite != SuiteScratch || !strings.HasPrefix(c.ID, SuiteScratch+"/") {
+			t.Errorf("FilterSuite scratch returned %s", c.ID)
 		}
 	}
 }
@@ -583,16 +652,16 @@ func TestCommittedScriptedGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var scripted []Case
-	for _, c := range all {
-		if c.RunScript() {
-			scripted = append(scripted, c)
+	var c *Case
+	for i := range all {
+		if all[i].ID == "default/tier_a_simple_set_a1" {
+			c = &all[i]
+			break
 		}
 	}
-	if len(scripted) != 1 || scripted[0].ID != "default/tier_a_simple_set_a1" {
-		t.Fatalf("scripted = %v, want only default/tier_a_simple_set_a1", scripted)
+	if c == nil || !c.RunScript() {
+		t.Fatal("missing scripted case default/tier_a_simple_set_a1")
 	}
-	c := scripted[0]
 
 	for _, pass := range OpenSavePass(all) {
 		if pass.ID == c.ID {
@@ -632,6 +701,185 @@ func TestCommittedScriptedGolden(t *testing.T) {
 	}
 	if xlsxContains(t, c.InitPath, "calipers") {
 		t.Fatal("tier_a_simple_set_a1 init.xlsx must not already contain calipers")
+	}
+}
+
+func TestScratchSuite(t *testing.T) {
+	root := repoCasesDir(t)
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundScratch bool
+	for _, s := range corpus.Suites {
+		if s == SuiteScratch {
+			foundScratch = true
+			break
+		}
+	}
+	if !foundScratch {
+		t.Fatal("corpus is missing suite scratch")
+	}
+
+	scratch, err := FilterSuite(corpus.Cases, SuiteScratch, corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(scratch); n < 10 || n > 20 {
+		t.Fatalf("scratch cases: %d, want 10-20", n)
+	}
+	for _, c := range scratch {
+		if c.Suite != SuiteScratch || !strings.HasPrefix(c.ID, SuiteScratch+"/") {
+			t.Errorf("FilterSuite scratch returned %s (suite=%q)", c.ID, c.Suite)
+		}
+		if strings.HasPrefix(c.Name, "tier_") || c.Tier != "" {
+			t.Errorf("%s: scratch case names must not use a tier_ prefix (tier=%q)", c.ID, c.Tier)
+		}
+	}
+
+	emptyInit, err := os.ReadFile(filepath.Join(root, SuiteRoundtrip, "tier_a_empty", InitFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var bodies []byte
+	for _, c := range scratch {
+		if !c.RunScript() {
+			t.Errorf("%s: scratch case must have a non-empty script.js", c.ID)
+			continue
+		}
+		initData, err := os.ReadFile(c.InitPath)
+		if err != nil {
+			t.Errorf("%s: init: %v", c.ID, err)
+			continue
+		}
+		if !bytes.Equal(initData, emptyInit) {
+			t.Errorf("%s: init.xlsx must be a byte-identical copy of roundtrip/tier_a_empty", c.ID)
+		}
+		if _, err := os.Stat(c.GoldenPath); err == nil {
+			t.Errorf("%s: scratch must not have a committed golden.xlsx", c.ID)
+		}
+		body, err := os.ReadFile(c.ScriptPath)
+		if err != nil {
+			t.Errorf("%s: script: %v", c.ID, err)
+			continue
+		}
+		if len(bytes.TrimSpace(body)) == 0 {
+			t.Errorf("%s: script.js is empty; discovery would skip it", c.ID)
+			continue
+		}
+		if !bytes.Contains(body, []byte("Excel.run")) {
+			t.Errorf("%s: script.js is not Office.js Excel.run:\n%s", c.ID, body)
+		}
+		bodies = append(bodies, body...)
+		bodies = append(bodies, '\n')
+	}
+
+	joined := string(bodies)
+	for _, needle := range []string{
+		"pivotTables.add",
+		"tables.add",
+		"charts.add",
+		"conditionalFormats",
+		"columnWidth",
+		"rowHeight",
+	} {
+		if !strings.Contains(joined, needle) {
+			t.Errorf("scratch suite missing %s", needle)
+		}
+	}
+	spill := regexp.MustCompile(`SEQUENCE|FILTER|UNIQUE|SORT|RANDARRAY`)
+	if !spill.MatchString(joined) {
+		t.Error("scratch suite missing a spilling dynamic-array formula (SEQUENCE/FILTER/UNIQUE/SORT/RANDARRAY)")
+	}
+	if !strings.Contains(joined, "freezePanes") && !strings.Contains(joined, "showGridlines") && !strings.Contains(joined, "tab.color") {
+		t.Error("scratch suite missing a worksheet/workbook setting (freezePanes, showGridlines, or tab.color)")
+	}
+	if !regexp.MustCompile(`\.values\s*=\s*\[[\s\S]*?"[A-Za-z]`).Match(bodies) {
+		t.Error("scratch suite missing text cell values")
+	}
+	if !regexp.MustCompile(`\.values\s*=\s*\[[\s\S]*?[0-9]`).Match(bodies) {
+		t.Error("scratch suite missing numeric cell values")
+	}
+
+	for _, c := range OpenSavePass(corpus.Cases) {
+		if c.Suite == SuiteScratch {
+			t.Errorf("OpenSavePass included scratch %s", c.ID)
+		}
+	}
+	golden := GoldenComparePass(corpus.Cases)
+	for _, c := range golden {
+		if c.Suite == SuiteScratch {
+			t.Errorf("GoldenComparePass included scratch %s", c.ID)
+		}
+	}
+	def := DefaultPass(corpus.Cases)
+	var nScratchDefault int
+	for _, c := range def {
+		if c.Suite == SuiteScratch {
+			nScratchDefault++
+		}
+	}
+	if nScratchDefault != len(scratch) {
+		t.Fatalf("DefaultPass scratch count=%d, want %d (unprefixed scratch included)", nScratchDefault, len(scratch))
+	}
+}
+
+func TestLoadUnprefixedCase(t *testing.T) {
+	root := t.TempDir()
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeCase(t, filepath.Join(root, SuiteScratch), "text", "pk", &js)
+	if err := os.Mkdir(filepath.Join(root, SuiteScratch, "not_a_case"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "scratch/text" || got[0].Name != "text" || got[0].Tier != "" || got[0].Suite != SuiteScratch {
+		t.Fatalf("got %+v", got)
+	}
+	if !got[0].RunScript() {
+		t.Fatal("unprefixed scratch case should run its script")
+	}
+	pass := DefaultPass(got)
+	if len(pass) != 1 || pass[0].ID != "scratch/text" {
+		t.Fatalf("DefaultPass should include unprefixed scratch, got %+v", pass)
+	}
+}
+
+func TestLoadFlatUnprefixedCases(t *testing.T) {
+	root := t.TempDir()
+	js := "Excel.run(async () => {});\n"
+	writeCase(t, root, "text", "pk", &js)
+	writeCase(t, root, "table", "pk", &js)
+	if err := os.Mkdir(filepath.Join(root, "not_a_case"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.Suites) != 0 {
+		t.Fatalf("flat unprefixed layout should not report suites, got %v", corpus.Suites)
+	}
+	if len(corpus.Cases) != 2 {
+		t.Fatalf("len=%d, want 2", len(corpus.Cases))
+	}
+	byID := map[string]Case{}
+	for _, c := range corpus.Cases {
+		byID[c.ID] = c
+		if c.Suite != "" || c.Tier != "" {
+			t.Errorf("%s: suite=%q tier=%q, want empty", c.ID, c.Suite, c.Tier)
+		}
+	}
+	if _, ok := byID["text"]; !ok {
+		t.Fatalf("missing text: %+v", byID)
+	}
+	if _, ok := byID["table"]; !ok {
+		t.Fatalf("missing table: %+v", byID)
 	}
 }
 

@@ -1,11 +1,12 @@
 # Verification cases
 
-Cases live in a **suite** directory (`roundtrip/` or `default/` until further triage), then `tier_{a|b|c}_<feature>/`:
+Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`). Roundtrip and default cases are `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed feature names:
 
 | Suite | Role |
 |-------|------|
 | [`roundtrip/`](roundtrip/) | Load+save package comparison |
 | [`default/`](default/) | Untriaged (Office.js and `tier_c` hostiles) |
+| [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; no committed goldens) |
 
 Each case directory:
 
@@ -18,11 +19,33 @@ Each case directory:
 
 Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on load+save cases.
 
-Office.js corpus is starting tiny: `default/tier_a_simple_set_a1/` copies the `roundtrip/tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `roundtrip/tier_a_simple/` stays load+save only. More scripts later.
+Office.js corpus: `default/tier_a_simple_set_a1/` copies the `roundtrip/tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `roundtrip/tier_a_simple/` stays load+save only. `scratch/` cases copy `roundtrip/tier_a_empty/init.xlsx` and each run one Office.js feature (tables, charts, pivot, spill, CF, basic Excel). Scratch has no committed goldens; `excel-save-pass` skips them because they are scripted. The default `verify` walk skips scratch for the same reason.
 
 Original source names are preserved in the tables below.
 
 Tiers: **A** = engine claims support (first goldens). **B** = remaining work (Excel keeps, an engine may drop). **C** = hostile / later; skip in the default pass.
+
+## Scratch (Office.js from empty)
+
+Each case is `scratch/<feature>/` with a copy of `roundtrip/tier_a_empty/init.xlsx` and a non-empty `script.js` (`await Excel.run(...)`). Seed cells in the same script are setup for that one feature.
+
+| Case | Feature |
+|------|---------|
+| `text/` | Text cell values |
+| `numbers/` | Numeric cell values |
+| `column_row_sizes/` | `columnWidth` / `rowHeight` |
+| `freeze_panes/` | Freeze first row |
+| `spill/` | Spilling `SEQUENCE` formula |
+| `named_range/` | Workbook named range |
+| `merge/` | Merge cells |
+| `number_format/` | Number format |
+| `add_sheet/` | Add a worksheet |
+| `table/` | `tables.add` |
+| `chart/` | `charts.add` |
+| `conditional_formatting/` | `conditionalFormats.add` |
+| `pivot_table/` | `pivotTables.add` (row + data hierarchy) |
+| `data_validation/` | List data validation |
+| `autofilter/` | AutoFilter |
 
 ## Authored fixtures
 
