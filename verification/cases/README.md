@@ -6,7 +6,7 @@ Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`). R
 |-------|------|
 | [`roundtrip/`](roundtrip/) | Load+save package comparison |
 | [`default/`](default/) | Untriaged (Office.js and `tier_c` hostiles) |
-| [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; no committed goldens) |
+| [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; committed `excel-run` goldens) |
 
 Each case directory:
 
@@ -14,12 +14,12 @@ Each case directory:
 |------|------|
 | `init.xlsx` | Required input workbook |
 | `script.js` | Optional Office.js. Missing or empty → load+save only (skip script execution) |
-| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (`tier_a`/`tier_b` without Office.js) and for `tier_a_simple_set_a1` (`excel-run`). |
+| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (`tier_a`/`tier_b` without Office.js), `tier_a_simple_set_a1` (`excel-run`), and `scratch/` (`excel-run`). |
 | `golden.xlsx.meta.json` | Sidecar (`host=excel-win`, Excel version/build, init; load+save omits `script`; `excel-run` records `script.js`) |
 
 Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on load+save cases.
 
-Office.js corpus: `default/tier_a_simple_set_a1/` copies the `roundtrip/tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `roundtrip/tier_a_simple/` stays load+save only. `scratch/` cases copy `roundtrip/tier_a_empty/init.xlsx` and each run one Office.js feature (tables, charts, pivot, spill, CF, basic Excel). Scratch has no committed goldens; `excel-save-pass` skips them because they are scripted. The default `verify` walk skips scratch for the same reason.
+Office.js corpus: `default/tier_a_simple_set_a1/` copies the `roundtrip/tier_a_simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `roundtrip/tier_a_simple/` stays load+save only. `scratch/` cases copy `roundtrip/tier_a_empty/init.xlsx` and each run one Office.js feature (tables, charts, pivot, spill, CF, basic Excel). Scratch goldens are committed from `excel-run`; `excel-save-pass` still skips them because they are scripted. The default `verify` walk includes scratch once those goldens exist.
 
 Original source names are preserved in the tables below.
 

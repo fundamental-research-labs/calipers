@@ -84,10 +84,9 @@ Commands:
       compare export ZIP parts to the committed Excel golden.
       Binary argv: save <in.xlsx> <out.xlsx>
                    run  <in.xlsx> <script.js> <out.xlsx>
-      Default walk is tier_a and tier_b cases under verification/cases
-      that have a committed golden.xlsx (skip tier_c and cases with no
-      golden). --suite NAME runs one suite directory (e.g. roundtrip,
-      default, scratch); --case suite/name runs one test.
+      Default walk is cases with a committed golden.xlsx (skip tier_c
+      and cases with no golden). --suite NAME runs one suite directory
+      (e.g. roundtrip, default, scratch); --case suite/name runs one test.
 
   version
       Print calipers version. On Windows, also print Excel version

@@ -559,8 +559,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 
 	goldenPass := GoldenComparePass(all)
-	if len(goldenPass) != nA+nB {
-		t.Fatalf("golden-compare pass len=%d, want %d (a/b with committed goldens)", len(goldenPass), nA+nB)
+	if len(goldenPass) != nA+nB+nScratch {
+		t.Fatalf("golden-compare pass len=%d, want %d (default pass with committed goldens)", len(goldenPass), nA+nB+nScratch)
 	}
 	for _, c := range goldenPass {
 		st, err := os.Stat(c.GoldenPath)
@@ -770,8 +770,9 @@ func TestScratchSuite(t *testing.T) {
 		if !bytes.Equal(initData, emptyInit) {
 			t.Errorf("%s: init.xlsx must be a byte-identical copy of roundtrip/tier_a_empty", c.ID)
 		}
-		if _, err := os.Stat(c.GoldenPath); err == nil {
-			t.Errorf("%s: scratch must not have a committed golden.xlsx", c.ID)
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
+			t.Errorf("%s: scratch must have a committed golden.xlsx", c.ID)
 		}
 		body, err := os.ReadFile(c.ScriptPath)
 		if err != nil {
@@ -822,10 +823,14 @@ func TestScratchSuite(t *testing.T) {
 		}
 	}
 	golden := GoldenComparePass(corpus.Cases)
+	var nScratchGolden int
 	for _, c := range golden {
 		if c.Suite == "scratch" {
-			t.Errorf("GoldenComparePass included scratch %s", c.ID)
+			nScratchGolden++
 		}
+	}
+	if nScratchGolden != len(scratch) {
+		t.Errorf("GoldenComparePass scratch count=%d, want %d", nScratchGolden, len(scratch))
 	}
 	def := DefaultPass(corpus.Cases)
 	var nScratchDefault int
