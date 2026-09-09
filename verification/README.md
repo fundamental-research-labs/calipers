@@ -2,7 +2,7 @@
 
 Goal: keep a spreadsheet engine’s workbook behavior (XLSX I/O now, Office.js later) aligned with **desktop Microsoft Excel**. Oracle is Excel itself, not LibreOffice or another library.
 
-This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (engine load → optional Office.js → export → semantic compare against the golden).
+This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (engine load → optional Office.js → export → package comparison against the golden).
 
 ## First test: open + save
 
@@ -22,10 +22,16 @@ Goldens are generated on **Windows Excel via COM**. Do not generate goldens on M
 
 Excel-saved vs engine-saved is **never** byte-identical (timestamps, `calcId`, style indexes, relationship ids, extra Excel parts).
 
-| Layer | Meaning | Gate |
+| Layer | Meaning | Current status |
 |-------|---------|------|
-| **Semantic** | Cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Pass/fail once a case is green |
-| **Package** | Canonical OOXML after stripping volatile bits | Report now; tighten later |
+| **Semantic** | Resolved cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Not implemented |
+| **Package** | ZIP-part contents after selected metadata exclusions and XML line-ending normalization | Current `verify` PASS/FAIL |
+
+Each difference is one ZIP part, ordered by part name; the first part is not a severity ranking. XML attribute/element ordering, numeric encodings, shared strings, relationship IDs, style IDs, and shared formulas are not resolved or canonicalized. These can produce failures for equivalent workbook content. All character data inside XML is retained, including whitespace-only text and indentation: without content-model information, removing whitespace between tags can erase actual spreadsheet strings.
+
+A package match does not prove that formulas were evaluated. By default, `verify` uses the host's existing `save`/`run` behavior; Mog preserves imported caches. Opt-in `verify --recalculate` requests full recalculation before export by passing `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>`. The selected external engine must support this flag; Mog recalculates after script execution for `run`. The selected policy is printed before verification. Generic engines retain their original argv when the flag is absent.
+
+`--recalculate` is rejected with the Excel host, which opens and saves without explicitly controlling calculation. Neither policy controls time, randomness, or environment-dependent results. Volatile formulas and their transitive dependents still require controlled assertions; fresh recalculation alone cannot match their previously captured golden caches. Goldens remain unchanged by `verify`.
 
 Always ignore: ZIP mtimes, `docProps` creator/dates, `Application`/`AppVersion`, `workbookPr@calcId`, `xl/calcChain.xml`, printer settings.
 

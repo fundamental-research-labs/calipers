@@ -106,7 +106,7 @@ func TestVerifyExportPathIsNotGolden(t *testing.T) {
 	if filepath.Base(export) != "tier_a_plain.xlsx" {
 		t.Fatalf("export = %s", export)
 	}
-	if !strings.Contains(buf.String(), "PASS") {
+	if !strings.Contains(buf.String(), "PASS (package match)") {
 		t.Fatalf("output = %s", buf.String())
 	}
 }
@@ -137,9 +137,13 @@ func TestVerifyCellValueFailsCompare(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake := &fakeEngine{}
-	err := runVerify(fake, root, []string{"tier_a_mismatch"}, outDir, io.Discard)
+	var buf bytes.Buffer
+	err := runVerify(fake, root, []string{"tier_a_mismatch"}, outDir, &buf)
 	if err == nil {
 		t.Fatal("value mismatch should fail the walk")
+	}
+	if !strings.Contains(buf.String(), "FAIL (differing package parts: 1) xl/worksheets/sheet1.xml") {
+		t.Fatalf("output must identify package-part differences: %s", buf.String())
 	}
 }
 
@@ -156,12 +160,72 @@ func TestRunVerifyEmptyDir(t *testing.T) {
 }
 
 func TestHostFromSpecExcel(t *testing.T) {
-	h, err := hostFromSpec("excel")
+	h, err := hostFromSpec("excel", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := h.OpenSave("in.xlsx", "out.xlsx"); err == nil {
 		t.Fatal("excel host off Windows should error on OpenSave")
+	}
+}
+
+func TestVerifyRecalculateRejectsExcelBeforeCreatingHost(t *testing.T) {
+	old := newExcelHost
+	newExcelHost = func() engine {
+		t.Fatal("unsupported recalculation must fail before starting Excel")
+		return nil
+	}
+	t.Cleanup(func() { newExcelHost = old })
+	for _, explicit := range []bool{true, false} {
+		args := []string{"verify", "--recalculate", "--cases-dir", t.TempDir()}
+		if explicit {
+			args = append(args, "--engine", "excel")
+		} else {
+			t.Setenv("MOG_BIN", "excel")
+		}
+		err := run(args)
+		if err == nil || !strings.Contains(err.Error(), "--recalculate is unsupported with --engine excel") {
+			t.Fatalf("error = %v, want unsupported Excel calculation policy", err)
+		}
+	}
+}
+
+func TestVerifyCLIRecalculatePolicy(t *testing.T) {
+	for _, flag := range []string{"--recalculate", "--recalculate=false"} {
+		t.Run(flag, func(t *testing.T) {
+			want := flag == "--recalculate"
+			old := newBinaryHost
+			called := false
+			newBinaryHost = func(path string, recalculate bool) engine {
+				called = true
+				if path != "engine-under-test" || recalculate != want {
+					t.Fatalf("host options = %q, %v; want engine-under-test, %v", path, recalculate, want)
+				}
+				return &fakeEngine{}
+			}
+			t.Cleanup(func() { newBinaryHost = old })
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldStdout := os.Stdout
+			os.Stdout = w
+			err = run([]string{"verify", "--engine", "engine-under-test", flag, "--cases-dir", t.TempDir(), "--out-dir", t.TempDir()})
+			os.Stdout = oldStdout
+			_ = w.Close()
+			out, readErr := io.ReadAll(r)
+			_ = r.Close()
+			if err != nil || readErr != nil || !called {
+				t.Fatalf("CLI error = %v, read error = %v, host constructed = %v", err, readErr, called)
+			}
+			policy := "host default (no recalculation requested)"
+			if want {
+				policy = "recalculate before export (external engine --recalculate)"
+			}
+			if !strings.Contains(string(out), "calculation policy: "+policy) {
+				t.Fatalf("missing selected policy in output: %s", out)
+			}
+		})
 	}
 }
 
@@ -174,13 +238,13 @@ func TestHostFromSpecRequiresEngine(t *testing.T) {
 		_ = os.Setenv("MOG_BIN", oldBin)
 		_ = os.Setenv("ENGINE", oldEng)
 	}()
-	// Force no vendor artefact by using a temp cwd... hostFromSpec("") uses cwd.
+	// Force no vendor artefact by using a temp cwd... hostFromSpec("", false) uses cwd.
 	// An explicit empty spec with no env still may find vendor/mog; that's ok
 	// if the artefact exists. Require error only when defaultEngineSpec is empty.
 	if defaultEngineSpec() != "" {
 		t.Skip("vendor/mog or MOG_BIN is present")
 	}
-	if _, err := hostFromSpec(""); err == nil {
+	if _, err := hostFromSpec("", false); err == nil {
 		t.Fatal("expected missing --engine error")
 	}
 }
@@ -190,7 +254,12 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 	writeVerifyCase(t, root, "tier_a_cli", "hello", nil)
 	fake := &fakeEngine{}
 	old := newBinaryHost
-	newBinaryHost = func(path string) engine { return fake }
+	newBinaryHost = func(path string, recalculate bool) engine {
+		if recalculate {
+			t.Fatal("default CLI must not request recalculation")
+		}
+		return fake
+	}
 	defer func() { newBinaryHost = old }()
 
 	var buf bytes.Buffer

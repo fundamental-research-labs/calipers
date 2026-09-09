@@ -5,6 +5,9 @@
 //
 //	<engine> save <in.xlsx> <out.xlsx>
 //	<engine> run  <in.xlsx> <script.js> <out.xlsx>
+//
+// Opt-in recalculation inserts --recalculate immediately after save/run;
+// callers must select an engine that supports this extended contract.
 package engine
 
 import (
@@ -27,6 +30,9 @@ const DefaultTimeout = 2 * time.Minute
 type Host struct {
 	Path    string
 	Timeout time.Duration
+	// Recalculate requests a full recalculation before export. The default
+	// leaves calculation behavior to the engine and preserves the original argv.
+	Recalculate bool
 }
 
 // New returns a host for the given executable path.
@@ -88,6 +94,9 @@ func (h *Host) exec(args ...string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout())
 	defer cancel()
+	if h.Recalculate {
+		args = append([]string{args[0], "--recalculate"}, args[1:]...)
+	}
 	cmd := execCommandContext(ctx, h.Path, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

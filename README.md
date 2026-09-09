@@ -8,6 +8,8 @@ v1 is **Windows-only**. Goldens are produced via Excel COM (`Excel.Application`)
 
 This repository is the verification tool and its init corpus. It is not a spreadsheet engine.
 
+`verify` currently compares ZIP parts after selected metadata exclusions and XML line-ending normalization. PASS means a package match under those rules; FAIL counts differing parts, not cells or proven defects. Text-node whitespace is preserved. A resolved workbook semantic comparator is not yet implemented; see [comparison scope](verification/README.md#what-to-compare).
+
 ## Requirements
 
 - Go 1.22+
@@ -46,6 +48,9 @@ calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 calipers verify --engine /path/to/engine --case tier_a_simple
 calipers verify --engine excel --case tier_a_simple
 
+# Opt in to recalculation with an external engine supporting --recalculate
+calipers verify --engine /path/to/mog --recalculate --case tier_a_formulas
+
 # Tool version (on Windows, also prints Excel version when COM works)
 calipers version
 
@@ -69,6 +74,8 @@ calipers verify --engine ./vendor/mog/target-native/debug/mog --case tier_a_simp
 A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel version/build when available, OS, tool name, input basename, optional `script` identity, UTC `generatedAt`). Load+save goldens omit `script`. `excel-run` records the script basename.
 
 CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
+
+`verify` prints the selected calculation policy. By default it leaves each host's policy unchanged; Mog preserves imported caches. `--recalculate` passes `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>` to an external engine that supports this contract. Mog recalculates before export, after the script for `run`. The flag is rejected for the Excel host, whose calculation is not explicitly controlled. Recalculation does not make random, time-dependent, or environment-dependent results and their dependents equal previously captured goldens; those require controlled assertions.
 
 ## Cases
 
