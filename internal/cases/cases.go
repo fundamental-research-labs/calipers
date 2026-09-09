@@ -4,14 +4,12 @@
 //
 //	verification/cases/<suite>/<case>/
 //
-// Roundtrip and default cases use the tier_{a|b|c}_<feature> directory
-// prefix. Scratch cases are unprefixed feature names (text, table, …).
-// Known suites today: roundtrip (load+save package comparison), default
-// (untriaged until categorized), and scratch (Office.js from an empty init;
-// no committed goldens). A case directory contains a required init.xlsx, an
-// optional script.js, and a dedicated golden.xlsx destination (not mixed into
-// a flat init dump). A missing or empty script means load+save only: skip
-// script execution.
+// Suite names are the directory names on disk; the loader does not hardcode
+// them. A case directory contains a required init.xlsx, an optional
+// script.js, and a dedicated golden.xlsx destination (not mixed into a flat
+// init dump). A missing or empty script means load+save only: skip script
+// execution. The optional tier_{a|b|c}_ prefix classifies a case; other
+// directory names are unprefixed cases when they contain init.xlsx.
 //
 // Load also accepts a flat directory of cases (one suite, used by tests
 // and --cases-dir pointing at a single suite).
@@ -34,13 +32,6 @@ const (
 	InitFile   = "init.xlsx"
 	ScriptFile = "script.js"
 	GoldenFile = "golden.xlsx"
-)
-
-// Suite directory names under DirName.
-const (
-	SuiteRoundtrip = "roundtrip"
-	SuiteDefault   = "default"
-	SuiteScratch   = "scratch"
 )
 
 // Tier is the case pass class encoded in the directory name.
@@ -182,14 +173,15 @@ func DefaultPass(all []Case) []Case {
 	return out
 }
 
-// GoldenComparePass is the default verify walk: DefaultPass minus scratch.
-// Scratch cases start from an empty init and run Office.js; they have no
-// committed goldens, so package comparison cannot score them.
+// GoldenComparePass is the default verify walk: DefaultPass minus cases
+// with no committed golden.xlsx. Package comparison cannot score a case
+// that has no oracle, regardless of suite name.
 func GoldenComparePass(all []Case) []Case {
 	pass := DefaultPass(all)
 	out := make([]Case, 0, len(pass))
 	for _, c := range pass {
-		if c.Suite == SuiteScratch {
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
 			continue
 		}
 		out = append(out, c)

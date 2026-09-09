@@ -232,9 +232,9 @@ func TestLoadRequiresInit(t *testing.T) {
 
 func TestLoadNestedSuites(t *testing.T) {
 	root := t.TempDir()
-	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_rt", "pk", nil)
-	writeCase(t, filepath.Join(root, SuiteDefault), "tier_a_other", "pk", nil)
-	writeCase(t, filepath.Join(root, SuiteDefault), "tier_c_bomb", "pk", nil)
+	writeCase(t, filepath.Join(root, "roundtrip"), "tier_a_rt", "pk", nil)
+	writeCase(t, filepath.Join(root, "default"), "tier_a_other", "pk", nil)
+	writeCase(t, filepath.Join(root, "default"), "tier_c_bomb", "pk", nil)
 	if err := os.Mkdir(filepath.Join(root, "empty_suite"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestLoadNestedSuites(t *testing.T) {
 	if len(corpus.Cases) != 3 {
 		t.Fatalf("len=%d, want 3", len(corpus.Cases))
 	}
-	wantSuites := []string{SuiteDefault, "empty_suite", SuiteRoundtrip}
+	wantSuites := []string{"default", "empty_suite", "roundtrip"}
 	if strings.Join(corpus.Suites, ",") != strings.Join(wantSuites, ",") {
 		t.Fatalf("suites=%v, want %v", corpus.Suites, wantSuites)
 	}
@@ -263,14 +263,14 @@ func TestLoadNestedSuites(t *testing.T) {
 			t.Errorf("%s: Dir=%q does not include id", c.ID, c.Dir)
 		}
 	}
-	if byID["roundtrip/tier_a_rt"].Suite != SuiteRoundtrip {
+	if byID["roundtrip/tier_a_rt"].Suite != "roundtrip" {
 		t.Fatalf("roundtrip/tier_a_rt suite=%q", byID["roundtrip/tier_a_rt"].Suite)
 	}
-	if byID["default/tier_a_other"].Suite != SuiteDefault || byID["default/tier_c_bomb"].Suite != SuiteDefault {
+	if byID["default/tier_a_other"].Suite != "default" || byID["default/tier_c_bomb"].Suite != "default" {
 		t.Fatalf("default-suite cases: %+v", byID)
 	}
 
-	got, err := FilterSuite(corpus.Cases, SuiteRoundtrip, corpus.Suites)
+	got, err := FilterSuite(corpus.Cases, "roundtrip", corpus.Suites)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,8 +297,8 @@ func TestLoadNestedSuites(t *testing.T) {
 
 func TestSelectQualifiedID(t *testing.T) {
 	root := t.TempDir()
-	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_one", "pk", nil)
-	writeCase(t, filepath.Join(root, SuiteDefault), "tier_c_bomb", "pk", nil)
+	writeCase(t, filepath.Join(root, "roundtrip"), "tier_a_one", "pk", nil)
+	writeCase(t, filepath.Join(root, "default"), "tier_c_bomb", "pk", nil)
 	all, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -321,8 +321,8 @@ func TestSelectQualifiedID(t *testing.T) {
 
 func TestSelectAmbiguousID(t *testing.T) {
 	root := t.TempDir()
-	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_one", "pk", nil)
-	writeCase(t, filepath.Join(root, SuiteDefault), "tier_a_one", "pk", nil)
+	writeCase(t, filepath.Join(root, "roundtrip"), "tier_a_one", "pk", nil)
+	writeCase(t, filepath.Join(root, "default"), "tier_a_one", "pk", nil)
 	all, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -340,24 +340,37 @@ func TestSelectAmbiguousID(t *testing.T) {
 	}
 }
 
-func TestGoldenComparePassSkipsScratch(t *testing.T) {
+func TestGoldenComparePassSkipsMissingGolden(t *testing.T) {
 	root := t.TempDir()
 	js := "await Excel.run(async (context) => { await context.sync(); });\n"
-	writeCase(t, filepath.Join(root, SuiteRoundtrip), "tier_a_rt", "pk", nil)
-	writeCase(t, filepath.Join(root, SuiteScratch), "text", "pk", &js)
-	writeCase(t, filepath.Join(root, SuiteScratch), "tier_c_bomb", "pk", &js)
+	writeCase(t, filepath.Join(root, "roundtrip"), "tier_a_rt", "pk", nil)
+	writeCase(t, filepath.Join(root, "scratch"), "text", "pk", &js)
+	writeCase(t, filepath.Join(root, "scratch"), "tier_c_bomb", "pk", &js)
 
 	all, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var rt *Case
+	for i := range all {
+		if all[i].ID == "roundtrip/tier_a_rt" {
+			rt = &all[i]
+			break
+		}
+	}
+	if rt == nil {
+		t.Fatal("missing roundtrip/tier_a_rt")
+	}
+	if err := os.WriteFile(rt.GoldenPath, []byte("pk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	def := DefaultPass(all)
 	if len(def) != 2 {
-		t.Fatalf("DefaultPass len=%d, want 2 (roundtrip a + unprefixed scratch)", len(def))
+		t.Fatalf("DefaultPass len=%d, want 2 (roundtrip a + unprefixed case without golden)", len(def))
 	}
 	got := GoldenComparePass(all)
 	if len(got) != 1 || got[0].ID != "roundtrip/tier_a_rt" {
-		t.Fatalf("GoldenComparePass = %+v, want only roundtrip/tier_a_rt", got)
+		t.Fatalf("GoldenComparePass = %+v, want only the case with a golden", got)
 	}
 }
 
@@ -389,9 +402,9 @@ func TestLoadRealCorpus(t *testing.T) {
 	if len(all) != 105 {
 		t.Fatalf("real corpus: got %d cases, want 105", len(all))
 	}
-	wantSuites := SuiteDefault + "," + SuiteRoundtrip + "," + SuiteScratch
+	wantSuites := "default,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
-		t.Fatalf("real corpus suites=%v, want [%s %s %s]", corpus.Suites, SuiteDefault, SuiteRoundtrip, SuiteScratch)
+		t.Fatalf("real corpus suites=%v, want %s", corpus.Suites, wantSuites)
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -414,21 +427,21 @@ func TestLoadRealCorpus(t *testing.T) {
 		case TierC:
 			nC++
 		case "":
-			if c.Suite != SuiteScratch {
+			if c.Suite != "scratch" {
 				t.Errorf("%s: unexpected empty tier", c.ID)
 			}
 		default:
 			t.Errorf("%s: unexpected tier %q", c.ID, c.Tier)
 		}
 		switch c.Suite {
-		case SuiteRoundtrip:
+		case "roundtrip":
 			nRT++
 			if c.RunScript() {
 				t.Errorf("%s: roundtrip suite must stay load+save, got script %q", c.ID, c.ScriptPath)
 			}
-		case SuiteDefault:
+		case "default":
 			nDef++
-		case SuiteScratch:
+		case "scratch":
 			nScratch++
 			if !c.RunScript() {
 				t.Errorf("%s: scratch case must be scripted", c.ID)
@@ -442,7 +455,7 @@ func TestLoadRealCorpus(t *testing.T) {
 		if c.ID != c.Suite+"/"+c.Name {
 			t.Errorf("%s: ID must be suite/name, Name=%q Suite=%q", c.ID, c.Name, c.Suite)
 		}
-		if c.Suite != SuiteScratch && c.Name != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
+		if c.Suite != "scratch" && c.Name != "tier_a_simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
 			t.Errorf("%s: unexpected script %q (only default/tier_a_simple_set_a1 and scratch/* are scripted)", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
@@ -480,7 +493,7 @@ func TestLoadRealCorpus(t *testing.T) {
 	if len(scripted) != 1+nScratch {
 		t.Fatalf("scripted cases: got %d, want %d (default/tier_a_simple_set_a1 + scratch)", len(scripted), 1+nScratch)
 	}
-	if simpleSetA1 == nil || !simpleSetA1.RunScript() || simpleSetA1.Suite != SuiteDefault || simpleSetA1.Name != "tier_a_simple_set_a1" {
+	if simpleSetA1 == nil || !simpleSetA1.RunScript() || simpleSetA1.Suite != "default" || simpleSetA1.Name != "tier_a_simple_set_a1" {
 		t.Fatalf("scripted case default/tier_a_simple_set_a1 missing or not runnable")
 	}
 	s := *simpleSetA1
@@ -514,8 +527,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	if len(named) != 2 || named[0].ID != "roundtrip/tier_a_simple" || named[1].ID != "default/tier_a_simple_set_a1" {
 		t.Fatalf("Select by suite/name = %+v", named)
 	}
-	if simple.Suite != SuiteRoundtrip {
-		t.Fatalf("tier_a_simple suite=%q, want %s", simple.Suite, SuiteRoundtrip)
+	if simple.Suite != "roundtrip" {
+		t.Fatalf("tier_a_simple suite=%q, want %s", simple.Suite, "roundtrip")
 	}
 	if simple.RunScript() || simple.ScriptPath != "" {
 		t.Fatalf("tier_a_simple must stay load+save, got ScriptPath=%q", simple.ScriptPath)
@@ -547,11 +560,12 @@ func TestLoadRealCorpus(t *testing.T) {
 
 	goldenPass := GoldenComparePass(all)
 	if len(goldenPass) != nA+nB {
-		t.Fatalf("golden-compare pass len=%d, want %d (a/b minus scratch)", len(goldenPass), nA+nB)
+		t.Fatalf("golden-compare pass len=%d, want %d (a/b with committed goldens)", len(goldenPass), nA+nB)
 	}
 	for _, c := range goldenPass {
-		if c.Suite == SuiteScratch {
-			t.Errorf("golden-compare pass included scratch %s", c.ID)
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
+			t.Errorf("%s: GoldenComparePass included a case with no golden", c.ID)
 		}
 		if c.Tier == TierC {
 			t.Errorf("golden-compare pass included hostile %s", c.ID)
@@ -569,12 +583,12 @@ func TestLoadRealCorpus(t *testing.T) {
 		if c.Tier == TierC {
 			t.Errorf("open+save pass included hostile %s", c.ID)
 		}
-		if c.Suite == SuiteScratch {
+		if c.Suite == "scratch" {
 			t.Errorf("open+save pass included scratch %s", c.ID)
 		}
 	}
 
-	bySuite, err := FilterSuite(all, SuiteScratch, corpus.Suites)
+	bySuite, err := FilterSuite(all, "scratch", corpus.Suites)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +596,7 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatalf("FilterSuite scratch len=%d, want %d", len(bySuite), nScratch)
 	}
 	for _, c := range bySuite {
-		if c.Suite != SuiteScratch || !strings.HasPrefix(c.ID, SuiteScratch+"/") {
+		if c.Suite != "scratch" || !strings.HasPrefix(c.ID, "scratch/") {
 			t.Errorf("FilterSuite scratch returned %s", c.ID)
 		}
 	}
@@ -712,7 +726,7 @@ func TestScratchSuite(t *testing.T) {
 	}
 	var foundScratch bool
 	for _, s := range corpus.Suites {
-		if s == SuiteScratch {
+		if s == "scratch" {
 			foundScratch = true
 			break
 		}
@@ -721,7 +735,7 @@ func TestScratchSuite(t *testing.T) {
 		t.Fatal("corpus is missing suite scratch")
 	}
 
-	scratch, err := FilterSuite(corpus.Cases, SuiteScratch, corpus.Suites)
+	scratch, err := FilterSuite(corpus.Cases, "scratch", corpus.Suites)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +743,7 @@ func TestScratchSuite(t *testing.T) {
 		t.Fatalf("scratch cases: %d, want 10-20", n)
 	}
 	for _, c := range scratch {
-		if c.Suite != SuiteScratch || !strings.HasPrefix(c.ID, SuiteScratch+"/") {
+		if c.Suite != "scratch" || !strings.HasPrefix(c.ID, "scratch/") {
 			t.Errorf("FilterSuite scratch returned %s (suite=%q)", c.ID, c.Suite)
 		}
 		if strings.HasPrefix(c.Name, "tier_") || c.Tier != "" {
@@ -737,7 +751,7 @@ func TestScratchSuite(t *testing.T) {
 		}
 	}
 
-	emptyInit, err := os.ReadFile(filepath.Join(root, SuiteRoundtrip, "tier_a_empty", InitFile))
+	emptyInit, err := os.ReadFile(filepath.Join(root, "roundtrip", "tier_a_empty", InitFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,20 +817,20 @@ func TestScratchSuite(t *testing.T) {
 	}
 
 	for _, c := range OpenSavePass(corpus.Cases) {
-		if c.Suite == SuiteScratch {
+		if c.Suite == "scratch" {
 			t.Errorf("OpenSavePass included scratch %s", c.ID)
 		}
 	}
 	golden := GoldenComparePass(corpus.Cases)
 	for _, c := range golden {
-		if c.Suite == SuiteScratch {
+		if c.Suite == "scratch" {
 			t.Errorf("GoldenComparePass included scratch %s", c.ID)
 		}
 	}
 	def := DefaultPass(corpus.Cases)
 	var nScratchDefault int
 	for _, c := range def {
-		if c.Suite == SuiteScratch {
+		if c.Suite == "scratch" {
 			nScratchDefault++
 		}
 	}
@@ -828,8 +842,8 @@ func TestScratchSuite(t *testing.T) {
 func TestLoadUnprefixedCase(t *testing.T) {
 	root := t.TempDir()
 	js := "await Excel.run(async (context) => { await context.sync(); });\n"
-	writeCase(t, filepath.Join(root, SuiteScratch), "text", "pk", &js)
-	if err := os.Mkdir(filepath.Join(root, SuiteScratch, "not_a_case"), 0o755); err != nil {
+	writeCase(t, filepath.Join(root, "scratch"), "text", "pk", &js)
+	if err := os.Mkdir(filepath.Join(root, "scratch", "not_a_case"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -837,7 +851,7 @@ func TestLoadUnprefixedCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].ID != "scratch/text" || got[0].Name != "text" || got[0].Tier != "" || got[0].Suite != SuiteScratch {
+	if len(got) != 1 || got[0].ID != "scratch/text" || got[0].Name != "text" || got[0].Tier != "" || got[0].Suite != "scratch" {
 		t.Fatalf("got %+v", got)
 	}
 	if !got[0].RunScript() {
