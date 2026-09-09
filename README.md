@@ -21,7 +21,7 @@ Off Windows, those commands exit with:
 calipers: excel-save requires Windows + Excel (COM)
 ```
 
-`version`, `verify`, and `-h` / `--help` work on any OS. `verify --engine excel` needs Windows + Excel. `verify --engine <bin>` execs a caller-supplied binary (`save` / `run`).
+`version`, `verify`, and `-h` / `--help` work on any OS. `verify` requires `--engine` (a binary path or `excel`). `verify --engine excel` needs Windows + Excel. `verify --engine <bin>` execs a caller-supplied binary (`save` / `run`).
 
 ## Build
 
@@ -52,7 +52,7 @@ calipers verify --engine /path/to/engine --case roundtrip/simple
 calipers verify --engine excel --case roundtrip/simple
 
 # Opt in to recalculation with an external engine supporting --recalculate
-calipers verify --engine /path/to/mog --recalculate --case roundtrip/formulas
+calipers verify --engine /path/to/engine --recalculate --case roundtrip/formulas
 
 # Tool version (on Windows, also prints Excel version when COM works)
 calipers version
@@ -71,9 +71,11 @@ calipers excel-run verification/cases/default/simple_set_a1/init.xlsx \
   verification/cases/default/simple_set_a1/golden.xlsx
 
 # External engine binary (argv: save <in> <out> / run <in> <script.js> <out>)
-calipers verify --engine ./vendor/mog/target-native/debug/mog
-calipers verify --engine ./vendor/mog/target-native/debug/mog --suite roundtrip
-calipers verify --engine ./vendor/mog/target-native/debug/mog --suite scratch
+calipers verify --engine /path/to/engine
+calipers verify --engine /path/to/engine --suite roundtrip
+calipers verify --engine /path/to/engine --suite scratch
+calipers verify --engine /path/to/engine --case roundtrip/simple
+# example: a Mog CLI that implements the same argv
 calipers verify --engine ./vendor/mog/target-native/debug/mog --case roundtrip/simple
 ```
 
@@ -81,7 +83,7 @@ A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel v
 
 CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
 
-`verify` prints the selected calculation policy. By default it leaves each host's policy unchanged; Mog preserves imported caches. `--recalculate` passes `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>` to an external engine that supports this contract. Mog recalculates before export, after the script for `run`. The flag is rejected for the Excel host, whose calculation is not explicitly controlled. Recalculation does not make random, time-dependent, or environment-dependent results and their dependents equal previously captured goldens; those require controlled assertions.
+`verify` prints the selected calculation policy. By default it leaves each host's policy unchanged. `--recalculate` passes `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>` to an external engine that supports this contract. The flag is rejected for the Excel host, whose calculation is not explicitly controlled. Recalculation does not make random, time-dependent, or environment-dependent results and their dependents equal previously captured goldens; those require controlled assertions.
 
 ## Cases
 

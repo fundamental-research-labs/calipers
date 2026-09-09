@@ -44,6 +44,15 @@ func TestRunHelp(t *testing.T) {
 	if !bytes.Contains(out, []byte("scratch")) {
 		t.Fatalf("help must mention scratch:\n%s", out)
 	}
+	if !bytes.Contains(out, []byte("--engine is required")) {
+		t.Fatalf("help must say --engine is required:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("may be omitted")) {
+		t.Fatalf("help must not say --engine may be omitted:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("MOG_BIN")) || bytes.Contains(out, []byte("vendor/mog")) {
+		t.Fatalf("help must not name Mog env/vendor as a default engine:\n%s", out)
+	}
 	if err := run([]string{"--help"}); err != nil {
 		t.Fatalf("run(--help) = %v", err)
 	}

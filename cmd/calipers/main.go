@@ -1,5 +1,5 @@
 // calipers drives Excel (Windows COM) to produce golden xlsx files
-// and verifies mog exports against those goldens.
+// and verifies engine exports against those goldens.
 //
 //	calipers excel-save <input.xlsx> <output.xlsx>
 //	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
@@ -82,7 +82,8 @@ Commands:
   verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
       compare export ZIP parts to the committed Excel golden.
-      Binary argv: save <in.xlsx> <out.xlsx>
+      --engine is required (binary path or excel). Binary argv:
+                   save <in.xlsx> <out.xlsx>
                    run  <in.xlsx> <script.js> <out.xlsx>
       Default walk is cases with a committed golden.xlsx (skip cases
       with no golden). --suite NAME runs one suite directory

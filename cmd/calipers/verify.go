@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/fundamental-research-labs/calipers/internal/cases"
@@ -42,15 +41,14 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--ca
   --recalculate     request full recalculation before export by passing
                     --recalculate after save/run; requires engine support.
                     Unsupported with --engine excel. Default: host policy
-                    (Mog preserves imported caches; Excel controls calculation).
+                    (no recalculation requested).
   --suite NAME      run only this suite directory under --cases-dir
                     (e.g. roundtrip, default, scratch)
   --case ID         run only this case (repeatable or comma-separated;
                     id is suite/name, e.g. roundtrip/simple)
 
-  Default walk is cases that have a committed golden.xlsx
-  (skip cases with no golden).
-  --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
+  --engine is required. Default walk is cases that have a committed
+  golden.xlsx (skip cases with no golden).
 `
 
 func verifyCmd(args []string) error {
@@ -100,12 +98,9 @@ func verifyCmd(args []string) error {
 
 func hostFromSpec(spec string, recalculate bool) (engine, error) {
 	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		spec = defaultEngineSpec()
-	}
 	switch spec {
 	case "":
-		return nil, fmt.Errorf("verify requires --engine <path|excel> (or MOG_BIN / vendor/mog artefact)")
+		return nil, fmt.Errorf("verify requires --engine <path|excel>")
 	case "excel":
 		if recalculate {
 			return nil, fmt.Errorf("--recalculate is unsupported with --engine excel: the Excel host does not explicitly control calculation")
@@ -114,49 +109,6 @@ func hostFromSpec(spec string, recalculate bool) (engine, error) {
 	default:
 		return newBinaryHost(spec, recalculate), nil
 	}
-}
-
-func defaultEngineSpec() string {
-	if b := os.Getenv("MOG_BIN"); b != "" {
-		return b
-	}
-	if b := os.Getenv("ENGINE"); b != "" {
-		return b
-	}
-	return findVendorMog()
-}
-
-func findVendorMog() string {
-	name := "mog"
-	if runtime.GOOS == "windows" {
-		name = "mog.exe"
-	}
-	var starts []string
-	if wd, err := os.Getwd(); err == nil {
-		starts = append(starts, wd)
-	}
-	seen := map[string]bool{}
-	for _, start := range starts {
-		for dir := start; ; dir = filepath.Dir(dir) {
-			if seen[dir] {
-				break
-			}
-			seen[dir] = true
-			for _, p := range []string{
-				filepath.Join(dir, "vendor", "mog", "target-native", "debug", name),
-				filepath.Join(dir, "vendor", "mog", "target-native", "release", name),
-			} {
-				if st, err := os.Stat(p); err == nil && !st.IsDir() {
-					return p
-				}
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-		}
-	}
-	return ""
 }
 
 type caseOutcome struct {
