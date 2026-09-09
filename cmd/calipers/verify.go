@@ -46,10 +46,10 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--ca
   --suite NAME      run only this suite directory under --cases-dir
                     (e.g. roundtrip, default, scratch)
   --case ID         run only this case (repeatable or comma-separated;
-                    id is suite/name, e.g. roundtrip/tier_a_simple)
+                    id is suite/name, e.g. roundtrip/simple)
 
   Default walk is cases that have a committed golden.xlsx
-  (skip tier_c hostiles and cases with no golden).
+  (skip cases with no golden).
   --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
 `
 
@@ -62,7 +62,7 @@ func verifyCmd(args []string) error {
 	outDir := fs.String("out-dir", "", "directory for engine exports (never the case golden)")
 	suite := fs.String("suite", "", "suite directory to run (default: all suites under --cases-dir)")
 	var caseIDs []string
-	fs.Func("case", "case id to run (suite/name; repeatable or comma-separated; default: tier_a and tier_b)", func(s string) error {
+	fs.Func("case", "case id to run (suite/name; repeatable or comma-separated; default: cases with a golden)", func(s string) error {
 		for _, id := range strings.Split(s, ",") {
 			id = strings.TrimSpace(id)
 			if id != "" {

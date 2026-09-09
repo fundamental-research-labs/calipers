@@ -40,9 +40,9 @@ func copyFile(in, out string) error {
 
 func TestVerifyMissingScriptIsLoadExportOnly(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeVerifyCase(t, root, "tier_a_noscript", "hello", nil)
+	writeVerifyCase(t, root, "noscript", "hello", nil)
 	fake := &fakeEngine{}
-	if err := runVerify(fake, root, []string{"tier_a_noscript"}, outDir, io.Discard); err != nil {
+	if err := runVerify(fake, root, []string{"noscript"}, outDir, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if len(fake.scripts) != 0 {
@@ -51,15 +51,15 @@ func TestVerifyMissingScriptIsLoadExportOnly(t *testing.T) {
 	if len(fake.opens) != 1 {
 		t.Fatalf("opens=%d, want 1", len(fake.opens))
 	}
-	assertExportNotGolden(t, fake.opens[0][1], filepath.Join(root, "tier_a_noscript", cases.GoldenFile))
+	assertExportNotGolden(t, fake.opens[0][1], filepath.Join(root, "noscript", cases.GoldenFile))
 }
 
 func TestVerifyEmptyScriptIsLoadExportOnly(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
 	empty := "  \n\t"
-	writeVerifyCase(t, root, "tier_a_emptyjs", "hello", &empty)
+	writeVerifyCase(t, root, "emptyjs", "hello", &empty)
 	fake := &fakeEngine{}
-	if err := runVerify(fake, root, []string{"tier_a_emptyjs"}, outDir, io.Discard); err != nil {
+	if err := runVerify(fake, root, []string{"emptyjs"}, outDir, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if len(fake.scripts) != 0 {
@@ -68,15 +68,15 @@ func TestVerifyEmptyScriptIsLoadExportOnly(t *testing.T) {
 	if len(fake.opens) != 1 {
 		t.Fatalf("opens=%d, want 1", len(fake.opens))
 	}
-	assertExportNotGolden(t, fake.opens[0][1], filepath.Join(root, "tier_a_emptyjs", cases.GoldenFile))
+	assertExportNotGolden(t, fake.opens[0][1], filepath.Join(root, "emptyjs", cases.GoldenFile))
 }
 
 func TestVerifyNonEmptyScriptRunsBeforeExport(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
 	js := "await Excel.run(async (context) => { await context.sync(); });\n"
-	writeVerifyCase(t, root, "tier_a_js", "hello", &js)
+	writeVerifyCase(t, root, "js", "hello", &js)
 	fake := &fakeEngine{}
-	if err := runVerify(fake, root, []string{"tier_a_js"}, outDir, io.Discard); err != nil {
+	if err := runVerify(fake, root, []string{"js"}, outDir, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if len(fake.opens) != 0 {
@@ -88,22 +88,22 @@ func TestVerifyNonEmptyScriptRunsBeforeExport(t *testing.T) {
 	if filepath.Base(fake.scripts[0][1]) != cases.ScriptFile {
 		t.Fatalf("script path = %s", fake.scripts[0][1])
 	}
-	assertExportNotGolden(t, fake.scripts[0][2], filepath.Join(root, "tier_a_js", cases.GoldenFile))
+	assertExportNotGolden(t, fake.scripts[0][2], filepath.Join(root, "js", cases.GoldenFile))
 }
 
 func TestVerifyExportPathIsNotGolden(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeVerifyCase(t, root, "tier_a_plain", "hello", nil)
+	writeVerifyCase(t, root, "plain", "hello", nil)
 	var buf bytes.Buffer
 	fake := &fakeEngine{}
-	if err := runVerify(fake, root, []string{"tier_a_plain"}, outDir, &buf); err != nil {
+	if err := runVerify(fake, root, []string{"plain"}, outDir, &buf); err != nil {
 		t.Fatal(err)
 	}
 	export := fake.opens[0][1]
 	if filepath.Base(export) == cases.GoldenFile {
 		t.Fatalf("export basename is golden: %s", export)
 	}
-	if filepath.Base(export) != "tier_a_plain.xlsx" {
+	if filepath.Base(export) != "plain.xlsx" {
 		t.Fatalf("export = %s", export)
 	}
 	if !strings.Contains(buf.String(), "PASS (package match)") {
@@ -111,22 +111,22 @@ func TestVerifyExportPathIsNotGolden(t *testing.T) {
 	}
 }
 
-func TestVerifyDefaultPassSkipsTierC(t *testing.T) {
+func TestVerifyDefaultPassRunsCasesWithGoldens(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeVerifyCase(t, root, "tier_a_one", "hello", nil)
-	writeVerifyCase(t, root, "tier_c_bomb", "hello", nil)
+	writeVerifyCase(t, root, "one", "hello", nil)
+	writeVerifyCase(t, root, "two", "hello", nil)
 	fake := &fakeEngine{}
 	if err := runVerify(fake, root, nil, outDir, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	if len(fake.opens) != 1 || !strings.Contains(fake.opens[0][0], "tier_a_one") {
-		t.Fatalf("opens = %v", fake.opens)
+	if len(fake.opens) != 2 {
+		t.Fatalf("opens = %v, want both cases with goldens", fake.opens)
 	}
 }
 
 func TestVerifyCellValueFailsCompare(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	dir := filepath.Join(root, "tier_a_mismatch")
+	dir := filepath.Join(root, "mismatch")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestVerifyCellValueFailsCompare(t *testing.T) {
 	}
 	fake := &fakeEngine{}
 	var buf bytes.Buffer
-	err := runVerify(fake, root, []string{"tier_a_mismatch"}, outDir, &buf)
+	err := runVerify(fake, root, []string{"mismatch"}, outDir, &buf)
 	if err == nil {
 		t.Fatal("value mismatch should fail the walk")
 	}
@@ -251,7 +251,7 @@ func TestHostFromSpecRequiresEngine(t *testing.T) {
 
 func TestRunVerifyCLIUsesWalk(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeVerifyCase(t, root, "tier_a_cli", "hello", nil)
+	writeVerifyCase(t, root, "cli", "hello", nil)
 	fake := &fakeEngine{}
 	old := newBinaryHost
 	newBinaryHost = func(path string, recalculate bool) engine {
@@ -269,7 +269,7 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 	}
 	oldStdout := os.Stdout
 	os.Stdout = w
-	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "tier_a_cli"})
+	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "cli"})
 	_ = w.Close()
 	os.Stdout = oldStdout
 	out, _ := io.ReadAll(r)
@@ -291,9 +291,8 @@ func TestRunVerifyCLIUsesWalk(t *testing.T) {
 
 func TestRunVerifyCLIAllSuites(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
-	writeNestedVerifyCase(t, root, "default", "tier_c_bomb", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
@@ -305,21 +304,21 @@ func TestRunVerifyCLIAllSuites(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(fake.opens) != 2 {
-		t.Fatalf("default verify must run every suite (skip tier_c): opens=%v", fake.opens)
+		t.Fatalf("default verify must run every suite: opens=%v", fake.opens)
 	}
 	got := openedCaseIDs(fake)
-	if !got["tier_a_rt"] || !got["tier_a_other"] || got["tier_c_bomb"] {
-		t.Fatalf("opened = %v, want roundtrip+default minus tier_c", got)
+	if !got["rt"] || !got["other"] {
+		t.Fatalf("opened = %v, want roundtrip+default", got)
 	}
-	if !strings.Contains(out, "roundtrip/tier_a_rt") || !strings.Contains(out, "default/tier_a_other") {
+	if !strings.Contains(out, "roundtrip/rt") || !strings.Contains(out, "default/other") {
 		t.Fatalf("output must name suite-qualified ids:\n%s", out)
 	}
 }
 
 func TestRunVerifyCLICasesDirSingleSuite(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
@@ -331,15 +330,15 @@ func TestRunVerifyCLICasesDirSingleSuite(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := openedCaseIDs(fake)
-	if len(fake.opens) != 1 || !got["tier_a_rt"] || got["tier_a_other"] {
+	if len(fake.opens) != 1 || !got["rt"] || got["other"] {
 		t.Fatalf("--cases-dir <suite> opened %v", got)
 	}
 }
 
 func TestRunVerifyCLISuiteFlag(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
@@ -351,36 +350,36 @@ func TestRunVerifyCLISuiteFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := openedCaseIDs(fake)
-	if len(fake.opens) != 1 || !got["tier_a_rt"] || got["tier_a_other"] {
+	if len(fake.opens) != 1 || !got["rt"] || got["other"] {
 		t.Fatalf("--suite roundtrip opened %v", got)
 	}
-	if !strings.Contains(out, "roundtrip/tier_a_rt") {
+	if !strings.Contains(out, "roundtrip/rt") {
 		t.Fatalf("output = %s", out)
 	}
-	if strings.Contains(out, "tier_a_other") {
+	if strings.Contains(out, "other") {
 		t.Fatalf("--suite must not run other suites:\n%s", out)
 	}
 }
 
 func TestRunVerifyCLICaseFlag(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
 	out, err := captureStdout(t, func() error {
-		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "default/tier_a_other"})
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "default/other"})
 	})
 	restore()
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := openedCaseIDs(fake)
-	if len(fake.opens) != 1 || !got["tier_a_other"] || got["tier_a_rt"] {
+	if len(fake.opens) != 1 || !got["other"] || got["rt"] {
 		t.Fatalf("--case opened %v", got)
 	}
-	if !strings.Contains(out, "default/tier_a_other") {
+	if !strings.Contains(out, "default/other") {
 		t.Fatalf("output = %s", out)
 	}
 	if filepath.Base(filepath.Dir(fake.opens[0][1])) != "default" {
@@ -390,26 +389,26 @@ func TestRunVerifyCLICaseFlag(t *testing.T) {
 
 func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
-	writeNestedVerifyCase(t, root, "default", "tier_a_other", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "default", "other", "hello", nil)
 	fake := &fakeEngine{}
 	restore := stubBinaryHost(t, fake)
 
 	_, err := captureStdout(t, func() error {
-		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip", "--case", "roundtrip/tier_a_rt"})
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip", "--case", "roundtrip/rt"})
 	})
 	restore()
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := openedCaseIDs(fake)
-	if len(fake.opens) != 1 || !got["tier_a_rt"] {
+	if len(fake.opens) != 1 || !got["rt"] {
 		t.Fatalf("--suite --case opened %v", got)
 	}
 
 	fake2 := &fakeEngine{}
 	restore = stubBinaryHost(t, fake2)
-	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip", "--case", "tier_a_other"})
+	err = run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "roundtrip", "--case", "other"})
 	restore()
 	if err == nil || !strings.Contains(err.Error(), "unknown case") {
 		t.Fatalf("error = %v, want unknown case outside suite", err)
@@ -418,7 +417,7 @@ func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 
 func TestRunVerifyCLIDefaultSkipsCasesWithoutGolden(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
 	js := "await Excel.run(async (context) => { await context.sync(); });\n"
 	writeNestedVerifyCaseNoGolden(t, root, "scratch", "text", "hello", &js)
 	fake := &fakeEngine{}
@@ -435,7 +434,7 @@ func TestRunVerifyCLIDefaultSkipsCasesWithoutGolden(t *testing.T) {
 		t.Fatalf("default verify must skip cases without a golden: opens=%v scripts=%v", fake.opens, fake.scripts)
 	}
 	got := openedCaseIDs(fake)
-	if !got["tier_a_rt"] || got["text"] {
+	if !got["rt"] || got["text"] {
 		t.Fatalf("opened = %v, want only the case with a golden", got)
 	}
 	if strings.Contains(out, "scratch/") {
@@ -445,7 +444,7 @@ func TestRunVerifyCLIDefaultSkipsCasesWithoutGolden(t *testing.T) {
 
 func TestRunVerifyCLISuiteScratch(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
 	js := "await Excel.run(async (context) => { await context.sync(); });\n"
 	writeNestedVerifyCase(t, root, "scratch", "text", "hello", &js)
 	fake := &fakeEngine{}
@@ -464,14 +463,14 @@ func TestRunVerifyCLISuiteScratch(t *testing.T) {
 	if !strings.Contains(out, "scratch/text") {
 		t.Fatalf("output must name scratch id:\n%s", out)
 	}
-	if strings.Contains(out, "tier_a_rt") {
+	if strings.Contains(out, "rt") {
 		t.Fatalf("--suite scratch must not run other suites:\n%s", out)
 	}
 }
 
 func TestRunVerifyCLIUnknownSuite(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
-	writeNestedVerifyCase(t, root, "roundtrip", "tier_a_rt", "hello", nil)
+	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)
 	restore := stubBinaryHost(t, &fakeEngine{})
 	err := run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--suite", "nope"})
 	restore()

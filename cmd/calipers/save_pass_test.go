@@ -28,15 +28,14 @@ func TestRunExcelSavePassEmptyDir(t *testing.T) {
 func TestSkippedOpenSave(t *testing.T) {
 	root := t.TempDir()
 	js := "Excel.run(async () => {});"
-	writeCaseDir(t, root, "tier_a_plain", nil)
-	writeCaseDir(t, root, "tier_a_js", &js)
-	writeCaseDir(t, root, "tier_c_bomb", nil)
+	writeCaseDir(t, root, "plain", nil)
+	writeCaseDir(t, root, "js", &js)
 	all, err := cases.Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	skipped := skippedOpenSave(all)
-	if len(skipped) != 1 || skipped[0].ID != "tier_a_js" {
+	if len(skipped) != 1 || skipped[0].ID != "js" {
 		t.Fatalf("skipped = %+v", skipped)
 	}
 	if n := len(cases.OpenSavePass(all)); n != 1 {
@@ -46,8 +45,8 @@ func TestSkippedOpenSave(t *testing.T) {
 
 func TestCheckUniformOpenSaveGoldens(t *testing.T) {
 	root := t.TempDir()
-	writeCaseDir(t, root, "tier_a_one", nil)
-	writeCaseDir(t, root, "tier_a_two", nil)
+	writeCaseDir(t, root, "one", nil)
+	writeCaseDir(t, root, "two", nil)
 	all, err := cases.Load(root)
 	if err != nil {
 		t.Fatal(err)

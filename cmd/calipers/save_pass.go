@@ -10,7 +10,7 @@ import (
 )
 
 // excelSavePass generates goldens for OpenSavePass via generateGolden.
-// Scripted cases and tier_c are skipped (no Office.js goldens in this pass).
+// Scripted cases are skipped (no Office.js goldens in this pass).
 // Goldens must be excel-win and share one Excel version/build.
 func excelSavePass(root string) error {
 	all, err := cases.Load(root)
