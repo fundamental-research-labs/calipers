@@ -48,8 +48,8 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--ca
   --case ID         run only this case (repeatable or comma-separated;
                     id is suite/name, e.g. roundtrip/tier_a_simple)
 
-  Default walk is tier_a and tier_b cases that have a committed
-  golden.xlsx (skip tier_c hostiles and cases with no golden).
+  Default walk is cases that have a committed golden.xlsx
+  (skip tier_c hostiles and cases with no golden).
   --engine may be omitted when MOG_BIN or vendor/mog CLI artefact is set.
 `
 

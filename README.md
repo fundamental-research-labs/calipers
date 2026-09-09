@@ -85,9 +85,9 @@ CI never runs Excel. A Windows machine with Excel generates goldens; those files
 
 ## Cases
 
-Each case lives in [`verification/cases/<suite>/<id>/`](verification/cases/). Roundtrip and default cases are `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed feature names. Required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. Suites: [`roundtrip/`](verification/cases/roundtrip/) (load+save package comparison), [`default/`](verification/cases/default/) (untriaged until categorized), and [`scratch/`](verification/cases/scratch/) (Office.js from an empty init; no committed goldens). **105 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8, plus 15 unprefixed scratch; 81 roundtrip, 9 default, 15 scratch). First committed Office.js golden: [`tier_a_simple_set_a1`](verification/cases/default/tier_a_simple_set_a1/) (sets A1; `tier_a_simple` stays load+save in roundtrip). See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
+Each case lives in [`verification/cases/<suite>/<id>/`](verification/cases/). Roundtrip and default cases are `tier_{a|b|c}_<feature>/`; scratch cases are unprefixed feature names. Required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. Suites: [`roundtrip/`](verification/cases/roundtrip/) (load+save package comparison), [`default/`](verification/cases/default/) (untriaged until categorized), and [`scratch/`](verification/cases/scratch/) (Office.js from an empty init; committed `excel-run` goldens). **105 cases** (`tier_a_` 57, `tier_b_` 25, `tier_c_` 8, plus 15 unprefixed scratch; 81 roundtrip, 9 default, 15 scratch). Office.js goldens: [`tier_a_simple_set_a1`](verification/cases/default/tier_a_simple_set_a1/) (sets A1; `tier_a_simple` stays load+save in roundtrip) and the 15 `scratch/` cases. See [`verification/README.md`](verification/README.md) for tiers, sources, and compare rules.
 
-`calipers verify` walks committed-golden suites (roundtrip and default). `--suite scratch` runs the empty-init Office.js cases; `--suite roundtrip` runs one suite; `--case roundtrip/tier_a_simple` runs one test. Case ids are `suite/name`.
+`calipers verify` walks committed-golden cases (roundtrip, default, and scratch). `--suite scratch` runs only the empty-init Office.js cases; `--suite roundtrip` runs one suite; `--case roundtrip/tier_a_simple` runs one test. Case ids are `suite/name`.
 
 | Prefix | Role |
 |--------|------|
@@ -95,7 +95,7 @@ Each case lives in [`verification/cases/<suite>/<id>/`](verification/cases/). Ro
 | `tier_b_` | Remaining work (charts, pivot, tables/autofilter, CF, validation, comments, drawings, hyperlinks, protection, print). Goldens still useful: Excel keeps these, an engine may drop them. |
 | `tier_c_` | Later / hostile (strict OOXML, password, XML bomb, huge stress, ATP, OLE embed). **Do not** run in the default golden pass. |
 
-A default golden pass (`excel-save-pass`) is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …) and Office.js cases (`tier_a_simple_set_a1`). The Office.js case has a committed `excel-run` golden (`script=script.js`).
+A default golden pass (`excel-save-pass`) is `tier_a` and `tier_b`; it skips `tier_c` hostiles (`tier_c_xmlbomb`, `tier_c_password`, …) and Office.js cases (`tier_a_simple_set_a1` and `scratch/`). Those Office.js cases have committed `excel-run` goldens (`script=script.js`).
 
 ## Host
 
