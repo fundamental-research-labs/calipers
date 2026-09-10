@@ -40,9 +40,45 @@ calipers excel-run verification\cases\default\multi_row_formulas\init.xlsx verif
 
 Each successful run also writes `golden.xlsx.meta.json` beside the golden.
 
+`officejs/` cases start from `roundtrip/empty` and have committed
+`excel-run` goldens (`host=excel-win`, `script=script.js`). On Windows,
+regenerate every pending scripted golden:
+
+```bat
+calipers excel-run-pass
+calipers excel-run-pass verification\cases\officejs
+```
+
+`excel-run-pass` skips load+save cases and cases that already have a golden.
+Off Windows it errors once there is work to do (same as `excel-run`).
+
+## Optional peak-memory / duration budgets
+
+A case directory may include `config.json` next to `init.xlsx` / `script.js`
+/ `golden.xlsx`:
+
+```json
+{
+  "maxPeakMemoryBytes": 268435456,
+  "maxDurationMs": 8000
+}
+```
+
+Missing `config.json` is valid (no budget). Do not invent numbers: measure
+on Windows (Excel and/or an engine binary) and write the sidecar with a
+margin:
+
+```bat
+calipers measure-budgets --engine excel --suite officejs
+calipers measure-budgets --engine excel --margin 1.5 --force
+```
+
+`--engine PATH` uses the same `save` / `run` argv as `verify`. This helper
+is not run in Linux CI.
+
 ## Verify with committed goldens
 
-Goldens for the six cases above are committed (`host=excel-win`). `calipers verify --engine <bin>` still skips any case that has no `golden.xlsx`.
+Goldens for the six cases above plus roundtrip/default/scratch/officejs are committed (`host=excel-win`). `calipers verify --engine <bin>` skips any case that has no `golden.xlsx`.
 
 PASS/FAIL is **semantic** compare (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`). A failing run prints each case’s diffs and a `Differences:` recap. Charts, printer settings, `sheetId`, and workbook XML child order are **not** in that gate. For those, also run:
 

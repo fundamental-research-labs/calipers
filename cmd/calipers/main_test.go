@@ -35,6 +35,12 @@ func TestRunHelp(t *testing.T) {
 	if !bytes.Contains(out, []byte("excel-save-pass")) {
 		t.Fatalf("help must list excel-save-pass:\n%s", out)
 	}
+	if !bytes.Contains(out, []byte("excel-run-pass")) {
+		t.Fatalf("help must list excel-run-pass:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("measure-budgets")) {
+		t.Fatalf("help must list measure-budgets:\n%s", out)
+	}
 	if !bytes.Contains(out, []byte("verify")) {
 		t.Fatalf("help must list verify:\n%s", out)
 	}

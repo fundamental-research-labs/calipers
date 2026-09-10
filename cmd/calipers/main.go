@@ -3,6 +3,8 @@
 //
 //	calipers excel-save <input.xlsx> <output.xlsx>
 //	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
+//	calipers excel-run-pass [cases-dir]
+//	calipers measure-budgets [--engine excel|PATH]
 //	calipers verify --engine <path|excel> [--suite NAME] [--case ID]...
 //	calipers version
 package main
@@ -54,6 +56,18 @@ func run(args []string) error {
 			return fmt.Errorf("usage: calipers excel-run <input.xlsx> <script.js> <output.xlsx>")
 		}
 		return excelRun(args[1], args[2], args[3])
+	case "excel-run-pass":
+		root := cases.DirName
+		switch len(args) {
+		case 1:
+		case 2:
+			root = args[1]
+		default:
+			return fmt.Errorf("usage: calipers excel-run-pass [cases-dir]")
+		}
+		return excelRunPass(root)
+	case "measure-budgets":
+		return measureBudgetsCmd(args[1:])
 	case "verify":
 		return verifyCmd(args[1:])
 	case "version":
@@ -79,6 +93,18 @@ Commands:
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
       then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
 
+  excel-run-pass [cases-dir]
+      Generate goldens for scripted cases that still lack golden.xlsx
+      (the colleague Windows path for officejs/ pending goldens).
+      Skips load+save cases and cases that already have a golden.
+      Requires Windows + Excel once there is work to do.
+
+  measure-budgets [--engine excel|PATH] [--margin 1.5] [--force] [--cases-dir DIR] [--suite NAME]
+      Run each case, record peak working set and wall time, write
+      optional config.json (maxPeakMemoryBytes, maxDurationMs) with a
+      margin. Missing config is valid. Requires Windows + Excel when
+      --engine excel (the default) and there is work to do.
+
   verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
       compare resolved workbook semantics to the committed Excel golden.
@@ -88,7 +114,7 @@ Commands:
                    run  <in.xlsx> <script.js> <out.xlsx>
       Default walk is cases with a committed golden.xlsx (skip cases
       with no golden). --suite NAME runs one suite directory
-      (e.g. roundtrip, default, scratch); --case suite/name runs one test.
+      (e.g. roundtrip, default, scratch, officejs); --case suite/name runs one test.
 
   version
       Print calipers version. On Windows, also print Excel version

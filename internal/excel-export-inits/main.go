@@ -2,7 +2,7 @@
 // each unique workbook in Windows Excel and Save As xlsx (format 51) to a
 // new path, then replacing the inits. Byte-identical inits are exported
 // once and copied (roundtrip/simple → default/simple_set_a1,
-// roundtrip/empty → scratch/*).
+// roundtrip/empty → scratch/* and officejs/*).
 //
 //	go run ./internal/excel-export-inits [cases-dir]
 //

@@ -1,0 +1,22 @@
+// officejs: name a pivot table.
+await Excel.run(async (context) => {
+  const data = context.workbook.worksheets.getActiveWorksheet();
+  data.getRange("A1:C4").values = [
+    ["Region", "Product", "Sales"],
+    ["East", "A", 10],
+    ["West", "A", 20],
+    ["East", "B", 30],
+  ];
+  await context.sync();
+  const dest = context.workbook.worksheets.add("Pivot");
+  await context.sync();
+  const pivot = context.workbook.pivotTables.add(
+    "NamedPivot",
+    data.getRange("A1:C4"),
+    dest.getRange("A1")
+  );
+  pivot.rowHierarchies.add(pivot.hierarchies.getItem("Region"));
+  pivot.dataHierarchies.add(pivot.hierarchies.getItem("Sales"));
+  pivot.name = "NamedPivot";
+  await context.sync();
+});
