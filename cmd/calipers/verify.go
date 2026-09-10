@@ -158,7 +158,7 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 		return nil
 	}
 
-	var nPass, nFail, nErr int
+	var nPass, nFail, nErr, nSkip int
 	for i, c := range selected {
 		o := verifyOne(eng, c, outDir, packageDiag)
 		switch o.Status {
@@ -166,6 +166,8 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 			nPass++
 		case "fail":
 			nFail++
+		case "skip":
+			nSkip++
 		default:
 			nErr++
 		}
@@ -175,15 +177,32 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 		}
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintf(w, "verify: %d pass, %d fail, %d error\n", nPass, nFail, nErr)
+	if nSkip > 0 {
+		fmt.Fprintf(w, "verify: %d pass, %d fail, %d error, %d skip\n", nPass, nFail, nErr, nSkip)
+	} else {
+		fmt.Fprintf(w, "verify: %d pass, %d fail, %d error\n", nPass, nFail, nErr)
+	}
 	if nFail+nErr > 0 {
 		return fmt.Errorf("%d failed, %d error", nFail, nErr)
 	}
 	return nil
 }
 
+func hasGolden(c cases.Case) bool {
+	st, err := os.Stat(c.GoldenPath)
+	return err == nil && st.Size() > 0
+}
+
 func verifyOne(eng engine, c cases.Case, outDir string, packageDiag bool) caseOutcome {
 	exportPath := filepath.Join(outDir, filepath.FromSlash(c.ID)+".xlsx")
+	if !hasGolden(c) {
+		return caseOutcome{
+			ID:     c.ID,
+			Export: exportPath,
+			Status: "skip",
+			Detail: "(no golden.xlsx; generate with calipers excel-save or excel-run)",
+		}
+	}
 	if filepath.Clean(exportPath) == filepath.Clean(c.GoldenPath) {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: "refusing to overwrite golden"}
 	}

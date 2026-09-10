@@ -48,7 +48,7 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Case directories are feature names. Missing or empty `script.js` means load+save only. **97 cases** (81 roundtrip, 1 default, 15 scratch). Eight hostiles live in `_disabled/` and are not loaded.
+Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Case directories are feature names. Missing or empty `script.js` means load+save only. **103 cases** (83 roundtrip, 5 default, 15 scratch). Eight hostiles live in `_disabled/` and are not loaded. Six new roundtrip/lost-info cases (custom views, theme colors, names.add order, sparse sheet IDs, chart titles, multi-row formulas) have `init.xlsx` ± `script.js` and **no golden yet** — generate them on Windows with the commands in [`GOLDENS.md`](GOLDENS.md). `verify` skips a case that has no `golden.xlsx`.
 
 | Suite | Role |
 |-------|------|

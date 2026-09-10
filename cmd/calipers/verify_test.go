@@ -489,6 +489,27 @@ func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 	}
 }
 
+func TestRunVerifyCLICaseWithoutGoldenSkips(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCaseNoGolden(t, root, "roundtrip", "pending", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "roundtrip/pending"})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 0 || len(fake.scripts) != 0 {
+		t.Fatalf("missing golden must skip without running the engine: opens=%v scripts=%v", fake.opens, fake.scripts)
+	}
+	if !strings.Contains(out, "SKIP") || !strings.Contains(out, "no golden.xlsx") {
+		t.Fatalf("output = %s", out)
+	}
+}
+
 func TestRunVerifyCLIDefaultSkipsCasesWithoutGolden(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
 	writeNestedVerifyCase(t, root, "roundtrip", "rt", "hello", nil)

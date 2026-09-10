@@ -9,6 +9,17 @@ Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`) as
 | [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; committed `excel-run` goldens) |
 | [`_disabled/`](_disabled/) | Hostile / later cases (not loaded) |
 
+Pending Excel-win goldens (init only; `calipers verify` skips until [`GOLDENS.md`](../GOLDENS.md) is run on Windows):
+
+| Case | Issue | Semantic gate | Golden command |
+|------|-------|---------------|----------------|
+| `roundtrip/custom_view_printer_settings/` | mog #360 custom-view pageSetup / printer rels | export crash = ERROR; print parts not compared | `excel-save` |
+| `roundtrip/theme_linked_colors/` | mog #329 theme+tint colors | styles (theme slots) | `excel-save` |
+| `default/names_add_defined_names_order/` | mog #332 `<definedNames>` before `<calcPr>`/`<extLst>` | name exists, not XML order — use `--package` | `excel-run` |
+| `default/add_sheet_sparse_ids/` | mog #334 unique `sheetId` after add | sheet names, not `sheetId` — use `--package` | `excel-run` |
+| `default/chart_titles/` | mog #338 `<c:overlay val="0"/>` on authored titles | charts out of v1 — use `--package` | `excel-run` |
+| `default/multi_row_formulas/` | mog #328 formula strings on later rows | formulas | `excel-run` |
+
 Each case directory:
 
 | File | Role |
@@ -55,6 +66,12 @@ Workbooks assembled for basic layout and formula-category coverage.
 | `empty/` | Empty workbook |
 | `simple/` | Minimal values (load+save) |
 | `simple_set_a1/` | Copy of `simple` init + Office.js that sets A1 |
+| `custom_view_printer_settings/` | Custom sheet views with nested pageSetup + printer rels (mog #360) |
+| `theme_linked_colors/` | Font color `theme=4 tint=0.2` (mog #329) |
+| `names_add_defined_names_order/` | `names.add` on an Excel-shaped workbook (mog #332) |
+| `add_sheet_sparse_ids/` | Add a sheet after importing `sheetId="2"` (mog #334) |
+| `chart_titles/` | `charts.add` with chart + axis titles (mog #338) |
+| `multi_row_formulas/` | Multi-row `Range.formulas` matrix (mog #328) |
 | `types/` | Cell types |
 | `styled/` | Basic styles |
 | `formulas/` | Formulas |
