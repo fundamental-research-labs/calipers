@@ -106,7 +106,7 @@ func TestVerifyExportPathIsNotGolden(t *testing.T) {
 	if filepath.Base(export) != "plain.xlsx" {
 		t.Fatalf("export = %s", export)
 	}
-	if !strings.Contains(buf.String(), "PASS (package match)") {
+	if !strings.Contains(buf.String(), "PASS (semantic match)") {
 		t.Fatalf("output = %s", buf.String())
 	}
 }
@@ -142,8 +142,43 @@ func TestVerifyCellValueFailsCompare(t *testing.T) {
 	if err == nil {
 		t.Fatal("value mismatch should fail the walk")
 	}
-	if !strings.Contains(buf.String(), "FAIL (differing package parts: 1) xl/worksheets/sheet1.xml") {
-		t.Fatalf("output must identify package-part differences: %s", buf.String())
+	if !strings.Contains(buf.String(), "FAIL (semantic diffs:") {
+		t.Fatalf("output must identify semantic diffs: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "values: Sheet1!A1") {
+		t.Fatalf("output must name the cell: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "differing package parts") {
+		t.Fatalf("FAIL must not be ZIP-part counts: %s", buf.String())
+	}
+}
+
+func TestVerifySemanticPassDespitePackageNoise(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	dir := filepath.Join(root, "float")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.InitFile), miniXLSXNumber("92.3"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.GoldenFile), miniXLSXNumber("92.299999999999997"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := runVerifyFilter(&fakeEngine{}, root, "", []string{"float"}, outDir, &buf, true)
+	if err != nil {
+		t.Fatalf("semantic-equal float text must PASS even with --package: %v\n%s", err, buf.String())
+	}
+	out := buf.String()
+	if !strings.Contains(out, "PASS (semantic match)") {
+		t.Fatalf("output = %s", out)
+	}
+	if !strings.Contains(out, "package:") || !strings.Contains(out, "differing parts") {
+		t.Fatalf("--package should print ZIP diagnostic: %s", out)
+	}
+	if strings.Contains(out, "FAIL") {
+		t.Fatalf("--package must not flip PASS/FAIL: %s", out)
 	}
 }
 
@@ -642,12 +677,20 @@ func assertExportNotGolden(t *testing.T, export, golden string) {
 }
 
 func miniXLSX(value string) []byte {
+	return miniXLSXParts(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>` + value + `</t></is></c></row></sheetData></worksheet>`)
+}
+
+func miniXLSXNumber(v string) []byte {
+	return miniXLSXParts(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="4"><c r="C4"><v>` + v + `</v></c></row></sheetData></worksheet>`)
+}
+
+func miniXLSXParts(sheet string) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	parts := map[string]string{
 		"[Content_Types].xml":      `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
 		"xl/workbook.xml":          `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><workbookPr calcId="1" date1904="0"/><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>`,
-		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>` + value + `</t></is></c></row></sheetData></worksheet>`,
+		"xl/worksheets/sheet1.xml": sheet,
 	}
 	for name, body := range parts {
 		w, err := zw.Create(name)

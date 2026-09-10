@@ -12,6 +12,7 @@ import (
 	"github.com/fundamental-research-labs/calipers/internal/compare"
 	enginehost "github.com/fundamental-research-labs/calipers/internal/engine"
 	"github.com/fundamental-research-labs/calipers/internal/excel"
+	"github.com/fundamental-research-labs/calipers/internal/xlsxmodel"
 )
 
 // engine is the OpenSave/RunScript surface shared by Excel and an external binary.
@@ -29,11 +30,13 @@ var (
 	}
 )
 
-const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
+const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
 
   For each case: run the engine (load init.xlsx, Office.js if present and
-  non-empty), export a result xlsx (not the golden), compare its ZIP parts
-  to the committed Excel golden. Counts are differing parts, not defects.
+  non-empty), export a result xlsx (not the golden), compare resolved
+  workbook semantics to the committed Excel golden. PASS/FAIL is semantic
+  diffs (values, types, formulas, styles, sheets, names, merges, freeze,
+  date1904), not ZIP-part counts.
 
   --engine excel    Excel COM host (Windows)
   --engine PATH     external binary:  save <in> <out>
@@ -42,6 +45,8 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--ca
                     --recalculate after save/run; requires engine support.
                     Unsupported with --engine excel. Default: host policy
                     (no recalculation requested).
+  --package         also print ZIP-package diffs (diagnostic only; does
+                    not change PASS/FAIL)
   --suite NAME      run only this suite directory under --cases-dir
                     (e.g. roundtrip, default, scratch)
   --case ID         run only this case (repeatable or comma-separated;
@@ -56,6 +61,7 @@ func verifyCmd(args []string) error {
 	fs.SetOutput(os.Stderr)
 	engineSpec := fs.String("engine", "", "engine binary path, or 'excel'")
 	recalculate := fs.Bool("recalculate", false, "request recalculation before export (external engines supporting --recalculate only)")
+	packageDiag := fs.Bool("package", false, "print ZIP-package diffs without changing PASS/FAIL")
 	casesDir := fs.String("cases-dir", cases.DirName, "verification cases directory")
 	outDir := fs.String("out-dir", "", "directory for engine exports (never the case golden)")
 	suite := fs.String("suite", "", "suite directory to run (default: all suites under --cases-dir)")
@@ -79,7 +85,7 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	if fs.NArg() > 1 {
-		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...")
+		return fmt.Errorf("usage: calipers verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...")
 	}
 	if fs.NArg() == 1 {
 		*casesDir = fs.Arg(0)
@@ -93,7 +99,7 @@ func verifyCmd(args []string) error {
 		policy = "recalculate before export (external engine --recalculate)"
 	}
 	fmt.Fprintf(os.Stdout, "calculation policy: %s\n", policy)
-	return runVerifyFilter(host, *casesDir, *suite, caseIDs, *outDir, os.Stdout)
+	return runVerifyFilter(host, *casesDir, *suite, caseIDs, *outDir, os.Stdout, *packageDiag)
 }
 
 func hostFromSpec(spec string, recalculate bool) (engine, error) {
@@ -119,10 +125,10 @@ type caseOutcome struct {
 }
 
 func runVerify(eng engine, casesDir string, caseIDs []string, outDir string, w io.Writer) error {
-	return runVerifyFilter(eng, casesDir, "", caseIDs, outDir, w)
+	return runVerifyFilter(eng, casesDir, "", caseIDs, outDir, w, false)
 }
 
-func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDir string, w io.Writer) error {
+func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDir string, w io.Writer, packageDiag bool) error {
 	corpus, err := cases.LoadCorpus(casesDir)
 	if err != nil {
 		return err
@@ -154,7 +160,7 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 
 	var nPass, nFail, nErr int
 	for i, c := range selected {
-		o := verifyOne(eng, c, outDir)
+		o := verifyOne(eng, c, outDir, packageDiag)
 		switch o.Status {
 		case "pass":
 			nPass++
@@ -176,7 +182,7 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 	return nil
 }
 
-func verifyOne(eng engine, c cases.Case, outDir string) caseOutcome {
+func verifyOne(eng engine, c cases.Case, outDir string, packageDiag bool) caseOutcome {
 	exportPath := filepath.Join(outDir, filepath.FromSlash(c.ID)+".xlsx")
 	if filepath.Clean(exportPath) == filepath.Clean(c.GoldenPath) {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: "refusing to overwrite golden"}
@@ -192,16 +198,48 @@ func verifyOne(eng engine, c cases.Case, outDir string) caseOutcome {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
 	}
 
-	got, err := compare.Files(exportPath, c.GoldenPath)
+	sem, err := xlsxmodel.CompareFiles(exportPath, c.GoldenPath)
 	if err != nil {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
 	}
-	if got.Equal {
-		return caseOutcome{ID: c.ID, Export: exportPath, Status: "pass", Detail: "(package match)"}
+	detail := formatSemantic(sem)
+	if packageDiag {
+		detail += formatPackage(exportPath, c.GoldenPath)
 	}
-	detail := fmt.Sprintf("(differing package parts: %d)", len(got.Diffs))
-	if len(got.Diffs) > 0 {
-		detail += " " + got.Diffs[0].Part
+	if sem.Equal {
+		return caseOutcome{ID: c.ID, Export: exportPath, Status: "pass", Detail: detail}
 	}
 	return caseOutcome{ID: c.ID, Export: exportPath, Status: "fail", Detail: detail}
+}
+
+func formatSemantic(sem xlsxmodel.Result) string {
+	if sem.Equal {
+		return "(semantic match)"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "(semantic diffs: %d)", len(sem.Diffs))
+	for _, d := range sem.Diffs {
+		b.WriteString("\n  ")
+		if d.Location != "" {
+			fmt.Fprintf(&b, "%s: %s %s", d.Axis, d.Location, d.Detail)
+		} else {
+			fmt.Fprintf(&b, "%s: %s", d.Axis, d.Detail)
+		}
+	}
+	return b.String()
+}
+
+func formatPackage(exportPath, goldenPath string) string {
+	pkg, err := compare.Files(exportPath, goldenPath)
+	if err != nil {
+		return "\n  package: " + err.Error()
+	}
+	if pkg.Equal {
+		return "\n  package: match"
+	}
+	line := fmt.Sprintf("\n  package: %d differing parts", len(pkg.Diffs))
+	if len(pkg.Diffs) > 0 {
+		line += " " + pkg.Diffs[0].Part
+	}
+	return line
 }

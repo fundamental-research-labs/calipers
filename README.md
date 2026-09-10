@@ -8,7 +8,7 @@ v1 is **Windows-only**. Goldens are produced via Excel COM (`Excel.Application`)
 
 This repository is the verification tool and its init corpus. It is not a spreadsheet engine.
 
-`verify` currently compares ZIP parts after selected metadata exclusions and XML line-ending normalization. PASS means a package match under those rules; FAIL counts differing parts, not cells or proven defects. Text-node whitespace is preserved. A resolved workbook semantic comparator is not yet implemented; see [comparison scope](verification/README.md#what-to-compare).
+`verify` PASS/FAIL is resolved workbook semantics (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`), not ZIP-part or byte equality. Optional `--package` prints ZIP-part diffs as a diagnostic and does not change the gate. See [comparison scope](verification/README.md#what-to-compare).
 
 ## Requirements
 
@@ -50,6 +50,7 @@ calipers verify --engine /path/to/engine --suite roundtrip
 calipers verify --engine /path/to/engine --suite scratch
 calipers verify --engine /path/to/engine --case roundtrip/simple
 calipers verify --engine excel --case roundtrip/simple
+calipers verify --engine /path/to/engine --package --case roundtrip/simple
 
 # Opt in to recalculation with an external engine supporting --recalculate
 calipers verify --engine /path/to/engine --recalculate --case roundtrip/formulas
@@ -87,7 +88,7 @@ CI never runs Excel. A Windows machine with Excel generates goldens; those files
 
 ## Cases
 
-Each case lives in [`verification/cases/<suite>/<id>/`](verification/cases/) as a feature-named directory. Required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. Suites: [`roundtrip/`](verification/cases/roundtrip/) (load+save package comparison), [`default/`](verification/cases/default/) (untriaged until categorized), and [`scratch/`](verification/cases/scratch/) (Office.js from an empty init; committed `excel-run` goldens). **97 cases** (81 roundtrip, 1 default, 15 scratch). Eight hostiles live in [`_disabled/`](verification/cases/_disabled/) and are not loaded. Office.js goldens: [`simple_set_a1`](verification/cases/default/simple_set_a1/) (sets A1; `simple` stays load+save in roundtrip) and the 15 `scratch/` cases. See [`verification/README.md`](verification/README.md) for sources and compare rules.
+Each case lives in [`verification/cases/<suite>/<id>/`](verification/cases/) as a feature-named directory. Required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` (not mixed into the inits). Missing or empty `script.js` means load+save only — skip script execution. Suites: [`roundtrip/`](verification/cases/roundtrip/) (load+save semantic comparison), [`default/`](verification/cases/default/) (untriaged until categorized), and [`scratch/`](verification/cases/scratch/) (Office.js from an empty init; committed `excel-run` goldens). **97 cases** (81 roundtrip, 1 default, 15 scratch). Eight hostiles live in [`_disabled/`](verification/cases/_disabled/) and are not loaded. Office.js goldens: [`simple_set_a1`](verification/cases/default/simple_set_a1/) (sets A1; `simple` stays load+save in roundtrip) and the 15 `scratch/` cases. See [`verification/README.md`](verification/README.md) for sources and compare rules.
 
 `calipers verify` walks committed-golden cases (roundtrip, default, and scratch). `--suite scratch` runs only the empty-init Office.js cases; `--suite roundtrip` runs one suite; `--case roundtrip/simple` runs one test. Case ids are `suite/name`.
 
