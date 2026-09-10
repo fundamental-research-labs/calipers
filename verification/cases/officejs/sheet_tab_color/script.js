@@ -2,6 +2,6 @@
 await Excel.run(async (context) => {
   const sheet = context.workbook.worksheets.getActiveWorksheet();
   sheet.getRange("A1").values = [["tab"]];
-  sheet.tab.color = "#FF0000";
+  sheet.tabColor = "#FF0000";
   await context.sync();
 });

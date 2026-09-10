@@ -141,6 +141,9 @@ func runScript(t *testing.T, script, stubDir, calipersBin string, extraEnv []str
 }
 
 func TestVerifyMogScriptClonesBuildsAndVerifies(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("verify-mog.sh stubs are POSIX executables")
+	}
 	dir := t.TempDir()
 	stubDir := filepath.Join(dir, "bin")
 	logPath := filepath.Join(dir, "stub.log")
@@ -209,6 +212,9 @@ func TestVerifyMogScriptClonesBuildsAndVerifies(t *testing.T) {
 }
 
 func TestVerifyCellsScriptClonesBuildsAndVerifies(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("verify-cells.sh stubs are POSIX executables")
+	}
 	dir := t.TempDir()
 	stubDir := filepath.Join(dir, "bin")
 	logPath := filepath.Join(dir, "stub.log")

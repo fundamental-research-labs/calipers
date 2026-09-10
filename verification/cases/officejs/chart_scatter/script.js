@@ -8,6 +8,6 @@ await Excel.run(async (context) => {
     [3, 5],
     [4, 4],
   ];
-  sheet.charts.add(Excel.ChartType.xyScatter, sheet.getRange("A1:B5"));
+  sheet.charts.add(Excel.ChartType.xyscatter, sheet.getRange("A1:B5"));
   await context.sync();
 });

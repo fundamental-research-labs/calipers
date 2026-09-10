@@ -40,8 +40,9 @@ calipers excel-run verification\cases\default\multi_row_formulas\init.xlsx verif
 
 Each successful run also writes `golden.xlsx.meta.json` beside the golden.
 
-`officejs/` cases start from `roundtrip/empty` and have scripts but **no
-goldens yet**. On Windows, generate every pending scripted golden:
+`officejs/` cases start from `roundtrip/empty` and have committed
+`excel-run` goldens (`host=excel-win`, `script=script.js`). On Windows,
+regenerate every pending scripted golden:
 
 ```bat
 calipers excel-run-pass
@@ -77,7 +78,7 @@ is not run in Linux CI.
 
 ## Verify with committed goldens
 
-Goldens for the six cases above plus roundtrip/default/scratch are committed (`host=excel-win`). `calipers verify --engine <bin>` still skips any case that has no `golden.xlsx` (the `officejs/` suite until `excel-run-pass`).
+Goldens for the six cases above plus roundtrip/default/scratch/officejs are committed (`host=excel-win`). `calipers verify --engine <bin>` skips any case that has no `golden.xlsx`.
 
 PASS/FAIL is **semantic** compare (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`). A failing run prints each case’s diffs and a `Differences:` recap. Charts, printer settings, `sheetId`, and workbook XML child order are **not** in that gate. For those, also run:
 

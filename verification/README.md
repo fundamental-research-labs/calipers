@@ -55,12 +55,12 @@ Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` wit
 | `roundtrip/` | Load+save semantic comparison (Excel rewrite vs engine export). |
 | `default/` | Untriaged until categorized (Office.js `simple_set_a1`). |
 | `scratch/` | Office.js from an empty init (one feature per script). Committed `excel-run` goldens. |
-| `officejs/` | ~100 blank-init Office.js cases (copy of `roundtrip/empty`). **No goldens yet** — Windows `excel-run-pass`. |
+| `officejs/` | ~100 blank-init Office.js cases (copy of `roundtrip/empty`). Committed `excel-run` goldens. |
 | `_disabled/` | Hostile / later cases. Kept on disk; not a suite (names starting with `_` are skipped). |
 
-Committed Office.js goldens: `default/simple_set_a1` (copy of `roundtrip/simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`) and the 15 `scratch/` cases (copy of `roundtrip/empty`; each runs one `Excel.run` feature). `officejs/` is the larger blank-init Office.js set (tables, pivots, charts, spill, styles, small/large writes, …); goldens and `config.json` budgets are a Windows follow-up. `roundtrip/simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted case. Office.js goldens record `script=script.js`; `excel-save-pass` still skips scripted cases (including scratch and officejs). Hostiles in `_disabled/` are not in that set. Provenance: [`cases/README.md`](cases/README.md).
+Committed Office.js goldens: `default/simple_set_a1` (copy of `roundtrip/simple` init; Office.js sets A1 to `calipers`; golden from `excel-run`), the 15 `scratch/` cases (copy of `roundtrip/empty`; each runs one `Excel.run` feature), and `officejs/` (the larger blank-init set: tables, pivots, charts, spill, styles, small/large writes, …). `config.json` budgets are still a Windows follow-up (`measure-budgets`). `roundtrip/simple` stays load+save. Default-pass load+save goldens (`golden.xlsx` + `.meta.json`, `host=excel-win`) are committed next to each unscripted case. Office.js goldens record `script=script.js`; `excel-save-pass` still skips scripted cases (including scratch and officejs). Hostiles in `_disabled/` are not in that set. Provenance: [`cases/README.md`](cases/README.md).
 
-`calipers verify` walks committed-golden cases (roundtrip, default, and scratch) and skips `officejs/` until goldens exist. `--suite scratch` runs only the empty-init Office.js cases with goldens; `--suite officejs` selects the pending set; `--suite roundtrip` runs one directory; `--case roundtrip/simple` runs one test. Case ids are `suite/name`.
+`calipers verify` walks committed-golden cases (roundtrip, default, scratch, and officejs). `--suite scratch` runs only the empty-init Office.js cases; `--suite officejs` runs the larger blank-init set; `--suite roundtrip` runs one directory; `--case roundtrip/simple` runs one test. Case ids are `suite/name`.
 
 Sources (do not vendor FUSE/SpreadsheetBench — 16k unlabeled real-world files):
 

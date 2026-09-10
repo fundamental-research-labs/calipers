@@ -736,24 +736,16 @@ func TestLoadRealCorpus(t *testing.T) {
 
 	goldenPass := GoldenComparePass(all)
 	pending := pendingGoldenIDs(all)
-	if len(pending) != nOfficejs {
-		t.Fatalf("pending goldens: %d, want %d officejs cases (existing 103 keep goldens)", len(pending), nOfficejs)
+	if len(pending) != 0 {
+		t.Fatalf("pending goldens: %d, want 0 (officejs goldens committed); first=%v", len(pending), pending)
 	}
-	for _, id := range pending {
-		if !strings.HasPrefix(id, "officejs/") {
-			t.Errorf("unexpected pending golden %s (only officejs may lack goldens)", id)
-		}
-	}
-	if len(goldenPass) != len(all)-len(pending) {
-		t.Fatalf("golden-compare pass len=%d, want %d (all minus pending officejs)", len(goldenPass), len(all)-len(pending))
+	if len(goldenPass) != len(all) {
+		t.Fatalf("golden-compare pass len=%d, want all %d", len(goldenPass), len(all))
 	}
 	for _, c := range goldenPass {
 		st, err := os.Stat(c.GoldenPath)
 		if err != nil || st.Size() == 0 {
 			t.Errorf("%s: GoldenComparePass included a case with no golden", c.ID)
-		}
-		if c.Suite == "officejs" {
-			t.Errorf("GoldenComparePass included officejs %s (no golden yet)", c.ID)
 		}
 	}
 
@@ -1097,8 +1089,23 @@ func TestOfficejsSuite(t *testing.T) {
 			t.Errorf("%s: init.xlsx must be a byte-identical copy of roundtrip/empty", c.ID)
 		}
 		st, err := os.Stat(c.GoldenPath)
-		if err == nil && st.Size() > 0 {
-			t.Errorf("%s: officejs case must not have a golden yet", c.ID)
+		if err != nil || st.Size() == 0 {
+			t.Errorf("%s: officejs case must have a committed golden.xlsx", c.ID)
+			continue
+		}
+		m, err := golden.Read(c.GoldenPath)
+		if err != nil {
+			t.Errorf("%s: %v", c.ID, err)
+			continue
+		}
+		if m.Host != excel.HostID {
+			t.Errorf("%s: host %q, want %s", c.ID, m.Host, excel.HostID)
+		}
+		if m.Script != ScriptFile {
+			t.Errorf("%s: script %q, want %s", c.ID, m.Script, ScriptFile)
+		}
+		if m.Input != InitFile {
+			t.Errorf("%s: input %q, want %s", c.ID, m.Input, InitFile)
 		}
 		if c.Budget != nil || c.ConfigPath != "" {
 			t.Errorf("%s: officejs case must not ship a budget config yet", c.ID)
@@ -1142,14 +1149,14 @@ func TestOfficejsSuite(t *testing.T) {
 		"hyperlink",
 		"names.add",
 		"freezePanes",
-		"tab.color",
+		"tabColor",
 		".sort.apply",
 		".insert(",
 		"for (let i = 1; i <= 500; i++)",
 		"TableStyleMedium2",
 		"Excel.ChartType.pie",
 		"Excel.ChartType.line",
-		"Excel.ChartType.xyScatter",
+		"Excel.ChartType.xyscatter",
 		"columnHierarchies.add",
 		"filterHierarchies.add",
 		"showTotals",
@@ -1166,10 +1173,14 @@ func TestOfficejsSuite(t *testing.T) {
 		}
 	}
 	golden := GoldenComparePass(corpus.Cases)
+	var nOfficejsGolden int
 	for _, c := range golden {
 		if c.Suite == "officejs" {
-			t.Errorf("GoldenComparePass included officejs %s", c.ID)
+			nOfficejsGolden++
 		}
+	}
+	if nOfficejsGolden != len(officejs) {
+		t.Errorf("GoldenComparePass officejs count=%d, want %d", nOfficejsGolden, len(officejs))
 	}
 	def := DefaultPass(corpus.Cases)
 	var nDefault int

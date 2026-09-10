@@ -27,7 +27,7 @@ func chartSpecs() []spec {
     [3, 5],
     [4, 4],
   ];
-  sheet.charts.add(Excel.ChartType.xyScatter, sheet.getRange("A1:B5"));`),
+  sheet.charts.add(Excel.ChartType.xyscatter, sheet.getRange("A1:B5"));`),
 		sheetJS("chart_doughnut", "officejs: doughnut chart.", cats+`
   sheet.charts.add(Excel.ChartType.doughnut, sheet.getRange("A1:B5"));`),
 		sheetJS("chart_title", "officejs: column chart with a title.", cats+`

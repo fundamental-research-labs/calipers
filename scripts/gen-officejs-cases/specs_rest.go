@@ -11,7 +11,7 @@ await Excel.run(async (context) => {
 		sheetJS("sheet_rename", "officejs: rename the active worksheet.", `  sheet.getRange("A1").values = [["renamed"]];
   sheet.name = "Renamed";`),
 		sheetJS("sheet_tab_color", "officejs: set worksheet tab color.", `  sheet.getRange("A1").values = [["tab"]];
-  sheet.tab.color = "#FF0000";`),
+  sheet.tabColor = "#FF0000";`),
 		rawJS("sheet_hidden", `// officejs: add a sheet and hide it.
 await Excel.run(async (context) => {
   const hidden = context.workbook.worksheets.add("Hidden");

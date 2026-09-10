@@ -56,7 +56,7 @@ func TestSpecsCountUniqueAndOfficeJS(t *testing.T) {
 		"hyperlink",
 		"names.add",
 		"freezePanes",
-		"tab.color",
+		"tabColor",
 		".sort.apply",
 		".insert(",
 		"for (let i = 1; i <= 500; i++)",
@@ -82,7 +82,7 @@ func TestCommittedOfficejsMatchesSpecs(t *testing.T) {
 			t.Errorf("%s: %v", s.name, err)
 			continue
 		}
-		if string(got) != s.script {
+		if strings.ReplaceAll(string(got), "\r\n", "\n") != s.script {
 			t.Errorf("%s: committed script.js drifted from spec table", s.name)
 		}
 		init, err := os.ReadFile(filepath.Join(dir, "init.xlsx"))
@@ -93,8 +93,9 @@ func TestCommittedOfficejsMatchesSpecs(t *testing.T) {
 		if string(init) != string(emptyBytes) {
 			t.Errorf("%s: init.xlsx is not a copy of roundtrip/empty", s.name)
 		}
-		if _, err := os.Stat(filepath.Join(dir, "golden.xlsx")); err == nil {
-			t.Errorf("%s: must not have golden.xlsx", s.name)
+		st, err := os.Stat(filepath.Join(dir, "golden.xlsx"))
+		if err != nil || st.Size() == 0 {
+			t.Errorf("%s: missing golden.xlsx", s.name)
 		}
 	}
 }

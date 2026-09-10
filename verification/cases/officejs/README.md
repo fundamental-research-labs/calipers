@@ -5,8 +5,8 @@ About 100 cases that start from a **blank XLSX** (byte copy of
 `await Excel.run(...)` script. This is added coverage next to the 15
 [`scratch/`](../scratch/) cases; those keep their committed goldens.
 
-There is **no** `golden.xlsx` in this suite yet. Generate them on
-Windows + Excel:
+Committed `golden.xlsx` files come from Windows + Excel
+(`excel-run-pass`). To regenerate:
 
 ```bat
 calipers excel-run-pass verification\cases\officejs
