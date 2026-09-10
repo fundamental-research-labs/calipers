@@ -2,7 +2,7 @@
 
 Goal: keep a spreadsheet engine’s workbook behavior (XLSX I/O now, Office.js later) aligned with **desktop Microsoft Excel**. Oracle is Excel itself, not LibreOffice or another library.
 
-This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (engine load → optional Office.js → export → package comparison against the golden).
+This repo ships the golden generator (`calipers excel-save` / `excel-run`), the case corpus, and `calipers verify` (engine load → optional Office.js → export → semantic comparison against the golden).
 
 ## First test: open + save
 
@@ -24,10 +24,10 @@ Excel-saved vs engine-saved is **never** byte-identical (timestamps, `calcId`, s
 
 | Layer | Meaning | Current status |
 |-------|---------|------|
-| **Semantic** | Resolved cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Not implemented |
-| **Package** | ZIP-part contents after selected metadata exclusions and XML line-ending normalization | Current `verify` PASS/FAIL |
+| **Semantic** | Resolved cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Current `verify` PASS/FAIL |
+| **Package** | ZIP-part contents after selected metadata exclusions and XML line-ending normalization | Optional `verify --package` diagnostic (does not change PASS/FAIL) |
 
-Each difference is one ZIP part, ordered by part name; the first part is not a severity ranking. XML attribute/element ordering, numeric encodings, shared strings, relationship IDs, style IDs, and shared formulas are not resolved or canonicalized. These can produce failures for equivalent workbook content. All character data inside XML is retained, including whitespace-only text and indentation: without content-model information, removing whitespace between tags can erase actual spreadsheet strings.
+FAIL lines are semantic diffs (`values: Sheet1!C1 expected 15 got 0`), not ZIP-part counts. XML attribute/element ordering, numeric encodings of the same binary64 value, shared-string indexes, relationship IDs, style IDs, theme display names, and default row/col layout are not the gate. `verify --package` still reports those as differing ZIP parts.
 
 A package match does not prove that formulas were evaluated. By default, `verify` uses the host's existing `save`/`run` behavior. Opt-in `verify --engine PATH --recalculate` requests full recalculation before export by passing `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>`. The selected external engine must support this flag. The selected policy is printed before verification. Engines retain their original argv when the flag is absent. `--engine` is required (binary path or `excel`).
 
@@ -35,7 +35,7 @@ A package match does not prove that formulas were evaluated. By default, `verify
 
 Always ignore: ZIP mtimes, `docProps` creator/dates, `Application`/`AppVersion`, `workbookPr@calcId`, `xl/calcChain.xml`, printer settings.
 
-Never ignore: `date1904`, sheet order, values, formulas, styles, merges, names.
+Never ignore: `date1904`, sheet order, values, types, formulas, styles, merges, names, freeze.
 
 ## Hosts (reuse, don’t fork)
 
@@ -52,7 +52,7 @@ Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` wit
 
 | Suite | Role |
 |-------|------|
-| `roundtrip/` | Load+save package comparison (Excel rewrite vs engine export). |
+| `roundtrip/` | Load+save semantic comparison (Excel rewrite vs engine export). |
 | `default/` | Untriaged until categorized (Office.js `simple_set_a1`). |
 | `scratch/` | Office.js from an empty init (one feature per script). Committed `excel-run` goldens. |
 | `_disabled/` | Hostile / later cases. Kept on disk; not a suite (names starting with `_` are skipped). |

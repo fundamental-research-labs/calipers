@@ -4,7 +4,7 @@ Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`) as
 
 | Suite | Role |
 |-------|------|
-| [`roundtrip/`](roundtrip/) | Load+save package comparison |
+| [`roundtrip/`](roundtrip/) | Load+save semantic comparison |
 | [`default/`](default/) | Untriaged (Office.js) |
 | [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; committed `excel-run` goldens) |
 | [`_disabled/`](_disabled/) | Hostile / later cases (not loaded) |

@@ -79,9 +79,10 @@ Commands:
       Open input in Excel, run Office.js inside Excel (sideloaded add-in),
       then Save As xlsx. Requires Windows + Excel. Off Windows this errors.
 
-  verify --engine <path|excel> [--recalculate] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
+  verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
-      compare export ZIP parts to the committed Excel golden.
+      compare resolved workbook semantics to the committed Excel golden.
+      --package prints ZIP-part diffs without changing PASS/FAIL.
       --engine is required (binary path or excel). Binary argv:
                    save <in.xlsx> <out.xlsx>
                    run  <in.xlsx> <script.js> <out.xlsx>

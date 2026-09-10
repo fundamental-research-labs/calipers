@@ -1,7 +1,7 @@
 // Package xlsxmodel parses xlsx archives into workbook semantics (sheets,
 // cell values, types, formulas, styles, names, merges, freeze, date1904) and
 // diffs those models. It is not ZIP-part or XML string equality. calipers
-// verify still gates on compare.Files.
+// verify gates on CompareFiles.
 package xlsxmodel
 
 import (
