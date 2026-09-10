@@ -600,6 +600,22 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 }
 
+func TestCommittedInitsAreWindowsExcel16Exports(t *testing.T) {
+	root := repoCasesDir(t)
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) == 0 {
+		t.Fatal("no cases loaded")
+	}
+	for _, c := range all {
+		if err := excel.CheckWindowsExcel16Export(c.InitPath); err != nil {
+			t.Errorf("%s: %v", c.ID, err)
+		}
+	}
+}
+
 func TestCommittedOpenSaveGoldens(t *testing.T) {
 	root := repoCasesDir(t)
 	all, err := Load(root)
