@@ -1,7 +1,7 @@
 // Package xlsxmodel parses xlsx archives into workbook semantics (sheets,
-// cell values, types, formulas, date1904) and diffs those models. It is not
-// ZIP-part or XML string equality. Styles, names, merges, and freeze are
-// later PRs. calipers verify still gates on compare.Files.
+// cell values, types, formulas, styles, date1904) and diffs those models. It
+// is not ZIP-part or XML string equality. Names, merges, and freeze are later
+// PRs. calipers verify still gates on compare.Files.
 package xlsxmodel
 
 import (
@@ -20,7 +20,7 @@ import (
 
 const spreadsheetML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
-// Workbook is the semantic model (values, types, formulas, date1904).
+// Workbook is the semantic model (values, types, formulas, styles, date1904).
 type Workbook struct {
 	Date1904 bool
 	// Cells is sheet name → A1 → value.
@@ -46,6 +46,7 @@ type Value struct {
 	Formula string
 	FKind   string // "array" when <f t="array">; empty after shared expansion
 	FRef    string
+	Style   Style
 }
 
 // Diff is one semantic mismatch (not a ZIP part).
@@ -61,7 +62,7 @@ type Result struct {
 	Diffs []Diff
 }
 
-// CompareFiles parses two xlsx files and diffs values, types, formulas, date1904.
+// CompareFiles parses two xlsx files and diffs values, types, formulas, styles, date1904.
 func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	export, err := os.ReadFile(exportPath)
 	if err != nil {
@@ -74,7 +75,7 @@ func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	return Compare(export, golden)
 }
 
-// Compare parses two xlsx blobs and diffs values, types, formulas, date1904.
+// Compare parses two xlsx blobs and diffs values, types, formulas, styles, date1904.
 func Compare(export, golden []byte) (Result, error) {
 	a, err := Parse(export)
 	if err != nil {
@@ -87,7 +88,7 @@ func Compare(export, golden []byte) (Result, error) {
 	return DiffWorkbooks(a, b), nil
 }
 
-// Parse reads an xlsx archive into sheets, A1 values/types/formulas, and date1904.
+// Parse reads an xlsx archive into sheets, A1 values/types/formulas/styles, and date1904.
 // Absent workbookPr@date1904 means the 1900 date system (not 1904).
 func Parse(data []byte) (Workbook, error) {
 	parts, err := readParts(data)
@@ -95,13 +96,14 @@ func Parse(data []byte) (Workbook, error) {
 		return Workbook{}, err
 	}
 	sst := parseSST(parts["xl/sharedStrings.xml"])
+	styles := parseStyleBook(parts["xl/styles.xml"], parts["xl/theme/theme1.xml"])
 	wb := Workbook{Cells: map[string]map[string]Value{}}
 	if raw, ok := parts["xl/workbook.xml"]; ok {
 		meta := parseWorkbook(raw)
 		wb.Date1904 = meta.date1904
 		paths := sheetPaths(meta.sheets, parts)
 		for i, s := range meta.sheets {
-			cells := parseSheet(parts[paths[i]], sst)
+			cells := parseSheet(parts[paths[i]], sst, styles)
 			wb.Cells[s.name] = cells
 		}
 		return wb, nil
@@ -110,9 +112,9 @@ func Parse(data []byte) (Workbook, error) {
 	if len(names) == 0 {
 		return wb, nil
 	}
-	wb.Cells["Sheet1"] = parseSheet(parts[names[0]], sst)
+	wb.Cells["Sheet1"] = parseSheet(parts[names[0]], sst, styles)
 	for i := 1; i < len(names); i++ {
-		wb.Cells[fmt.Sprintf("Sheet%d", i+1)] = parseSheet(parts[names[i]], sst)
+		wb.Cells[fmt.Sprintf("Sheet%d", i+1)] = parseSheet(parts[names[i]], sst, styles)
 	}
 	return wb, nil
 }
@@ -182,6 +184,9 @@ func cellDiffs(loc string, a, b Value) []Diff {
 	}
 	if a.Formula != b.Formula || a.FKind != b.FKind || a.FRef != b.FRef {
 		diffs = append(diffs, Diff{Axis: "formulas", Location: loc, Detail: fmt.Sprintf("expected %q got %q", formulaKey(b), formulaKey(a))})
+	}
+	if a.Style != b.Style {
+		diffs = append(diffs, Diff{Axis: "styles", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.Style, a.Style)})
 	}
 	return diffs
 }
@@ -389,11 +394,11 @@ func parseSST(raw []byte) []string {
 }
 
 type rawCell struct {
-	ref, t, v, inline   string
-	f, fType, fRef, fSi string
+	ref, t, s, v, inline string
+	f, fType, fRef, fSi  string
 }
 
-func parseSheet(raw []byte, sst []string) map[string]Value {
+func parseSheet(raw []byte, sst []string, styles *styleBook) map[string]Value {
 	cells := map[string]Value{}
 	raws := collectCells(raw)
 	masters := map[string]rawCell{}
@@ -405,12 +410,14 @@ func parseSheet(raw []byte, sst []string) map[string]Value {
 	for _, c := range raws {
 		val, ok := cellValue(c.t, c.v, c.inline, sst)
 		formula, kind, aref := resolveFormula(c, masters)
-		if !ok && formula == "" && kind == "" {
+		st := styles.resolve(c.s)
+		if !ok && formula == "" && kind == "" && st.zero() {
 			continue
 		}
 		val.Formula = formula
 		val.FKind = kind
 		val.FRef = aref
+		val.Style = st
 		cells[c.ref] = val
 	}
 	return cells
@@ -436,7 +443,7 @@ func collectCells(raw []byte) []rawCell {
 			skip(dec)
 			continue
 		}
-		c := rawCell{ref: ref, t: attr(se, "t")}
+		c := rawCell{ref: ref, t: attr(se, "t"), s: attr(se, "s")}
 		c.v, c.inline, c.f, c.fType, c.fRef, c.fSi = readCell(dec)
 		out = append(out, c)
 	}
