@@ -180,7 +180,7 @@ func readXf(dec *xml.Decoder, se xml.StartElement) rawXf {
 }
 
 func readFont(dec *xml.Decoder, theme map[string]string) string {
-	var name, sz, u, color, scheme string
+	var name, sz, u, color string
 	bold, italic := false, false
 	walkLeaves(dec, func(se xml.StartElement) {
 		switch se.Name.Local {
@@ -197,17 +197,10 @@ func readFont(dec *xml.Decoder, theme map[string]string) string {
 			if u == "" {
 				u = "single"
 			}
-		case "scheme":
-			scheme = attr(se, "val")
 		case "color":
 			color = resolveColor(se, theme)
 		}
 	})
-	// Theme latin/ea/cs typeface (Calibri vs Aptos Narrow) is not cell-authored
-	// when scheme is major/minor. Compare the scheme slot instead.
-	if scheme == "minor" || scheme == "major" {
-		name = "scheme:" + scheme
-	}
 	return strings.Join([]string{name, sz, bool01(bold), bool01(italic), u, color}, ",")
 }
 

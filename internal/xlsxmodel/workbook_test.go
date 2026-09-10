@@ -354,7 +354,7 @@ func TestCompareEqualOnSameResolvedStyleDifferentIndex(t *testing.T) {
 	}
 }
 
-func TestCompareEqualOnThemeSchemeFontTypeface(t *testing.T) {
+func TestCompareUnequalOnThemeSchemeFontTypeface(t *testing.T) {
 	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
 	excelFont := `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Aptos Narrow"/><scheme val="minor"/></font></fonts>`
 	mogFont := `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><scheme val="minor"/></font></fonts>`
@@ -372,8 +372,17 @@ func TestCompareEqualOnThemeSchemeFontTypeface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Equal {
-		t.Fatalf("scheme=minor Aptos Narrow vs Calibri must be equal, got %v", got.Diffs)
+	if got.Equal {
+		t.Fatal("Aptos Narrow vs Calibri must be a font change even with scheme=minor")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" && strings.Contains(d.Detail, "font:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles font diff, got %v", got.Diffs)
 	}
 }
 
