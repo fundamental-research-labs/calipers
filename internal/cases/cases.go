@@ -7,10 +7,11 @@
 // Suite names are the directory names on disk; the loader does not hardcode
 // them. Directories whose names start with '_' are not suites: they stay on
 // disk but are not loaded. A case directory contains a required init.xlsx,
-// an optional script.js, and a dedicated golden.xlsx destination (not mixed
-// into a flat init dump). A missing or empty script means load+save only:
-// skip script execution. A directory is a case only when it contains
-// init.xlsx.
+// an optional script.js, an optional config.json (peak-memory / duration
+// budgets), and a dedicated golden.xlsx destination (not mixed into a flat
+// init dump). A missing or empty script means load+save only: skip script
+// execution. Missing config.json is valid (no budget). A directory is a
+// case only when it contains init.xlsx.
 //
 // Load also accepts a flat directory of cases (one suite, used by tests
 // and --cases-dir pointing at a single suite).
@@ -18,6 +19,7 @@ package cases
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +34,15 @@ const (
 	InitFile   = "init.xlsx"
 	ScriptFile = "script.js"
 	GoldenFile = "golden.xlsx"
+	ConfigFile = "config.json"
 )
+
+// Budget is an optional per-case cap written next to init/script/golden.
+// Missing config.json is valid: there is no cap. Zero fields mean "unset".
+type Budget struct {
+	MaxPeakMemoryBytes int64 `json:"maxPeakMemoryBytes,omitempty"`
+	MaxDurationMs      int64 `json:"maxDurationMs,omitempty"`
+}
 
 // Case is one verification case: init workbook, optional Office.js, golden dest.
 type Case struct {
@@ -41,8 +51,10 @@ type Case struct {
 	Suite      string // suite directory, e.g. "roundtrip"; empty in a flat layout
 	Dir        string
 	InitPath   string
-	ScriptPath string // non-empty only when a script should run
-	GoldenPath string // destination; may not exist yet
+	ScriptPath string  // non-empty only when a script should run
+	GoldenPath string  // destination; may not exist yet
+	ConfigPath string  // non-empty when config.json exists on disk
+	Budget     *Budget // nil when config.json is absent
 }
 
 // RunScript reports whether this case has a non-empty Office.js file to execute.
@@ -174,6 +186,35 @@ func GoldenComparePass(all []Case) []Case {
 	return out
 }
 
+// PendingScriptedGoldens is the excel-run-pass set: scripted cases with no
+// committed golden.xlsx. Unscripted cases and cases that already have a
+// golden are omitted.
+func PendingScriptedGoldens(all []Case) []Case {
+	out := make([]Case, 0)
+	for _, c := range all {
+		if !c.RunScript() {
+			continue
+		}
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// MissingBudget is cases that have no config.json. measure-budgets writes
+// those unless --force is set (then all cases are measured).
+func MissingBudget(all []Case) []Case {
+	out := make([]Case, 0)
+	for _, c := range all {
+		if c.Budget == nil {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // OpenSavePass is the v1 excel-save golden set: DefaultPass minus cases that
 // have Office.js to run. Scripted goldens are produced with excel-run, not
 // by load+save.
@@ -263,6 +304,10 @@ func loadOne(dir, name, suite string) (Case, error) {
 	if err != nil {
 		return Case{}, fmt.Errorf("case %s: %w", id, err)
 	}
+	budget, configPath, err := loadBudget(dir)
+	if err != nil {
+		return Case{}, fmt.Errorf("case %s: %w", id, err)
+	}
 	return Case{
 		ID:         id,
 		Name:       name,
@@ -271,7 +316,44 @@ func loadOne(dir, name, suite string) (Case, error) {
 		InitPath:   initPath,
 		ScriptPath: scriptPath,
 		GoldenPath: filepath.Join(dir, GoldenFile),
+		ConfigPath: configPath,
+		Budget:     budget,
 	}, nil
+}
+
+func loadBudget(dir string) (*Budget, string, error) {
+	p := filepath.Join(dir, ConfigFile)
+	data, err := os.ReadFile(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, "", fmt.Errorf("%s: empty", ConfigFile)
+	}
+	var b Budget
+	if err := json.Unmarshal(data, &b); err != nil {
+		return nil, "", fmt.Errorf("%s: %w", ConfigFile, err)
+	}
+	if b.MaxPeakMemoryBytes < 0 || b.MaxDurationMs < 0 {
+		return nil, "", fmt.Errorf("%s: negative budget", ConfigFile)
+	}
+	return &b, p, nil
+}
+
+// WriteBudget writes config.json into dir. Used by measure-budgets.
+func WriteBudget(dir string, b Budget) error {
+	if b.MaxPeakMemoryBytes < 0 || b.MaxDurationMs < 0 {
+		return fmt.Errorf("%s: negative budget", ConfigFile)
+	}
+	data, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	return os.WriteFile(filepath.Join(dir, ConfigFile), data, 0o644)
 }
 
 func scriptToRun(dir string) (string, error) {

@@ -48,7 +48,7 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--pa
   --package         also print ZIP-package diffs (diagnostic only; does
                     not change PASS/FAIL)
   --suite NAME      run only this suite directory under --cases-dir
-                    (e.g. roundtrip, default, scratch)
+                    (e.g. roundtrip, default, scratch, officejs)
   --case ID         run only this case (repeatable or comma-separated;
                     id is suite/name, e.g. roundtrip/simple)
 

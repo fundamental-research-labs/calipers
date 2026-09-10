@@ -76,6 +76,120 @@ func TestLoadWhitespaceScriptIsLoadSave(t *testing.T) {
 	}
 }
 
+func TestLoadMissingConfigIsOK(t *testing.T) {
+	root := t.TempDir()
+	js := "Excel.run(async () => {});\n"
+	writeCase(t, root, "noconfig", "pk", &js)
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len=%d", len(got))
+	}
+	c := got[0]
+	if c.Budget != nil || c.ConfigPath != "" {
+		t.Fatalf("missing config.json must leave Budget nil, got %+v path=%q", c.Budget, c.ConfigPath)
+	}
+}
+
+func TestLoadConfigPresent(t *testing.T) {
+	root := t.TempDir()
+	js := "Excel.run(async () => {});\n"
+	writeCase(t, root, "withcfg", "pk", &js)
+	dir := filepath.Join(root, "withcfg")
+	if err := WriteBudget(dir, Budget{MaxPeakMemoryBytes: 64 << 20, MaxDurationMs: 1500}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len=%d", len(got))
+	}
+	c := got[0]
+	if c.ConfigPath != filepath.Join(dir, ConfigFile) {
+		t.Fatalf("ConfigPath=%q", c.ConfigPath)
+	}
+	if c.Budget == nil {
+		t.Fatal("Budget is nil")
+	}
+	if c.Budget.MaxPeakMemoryBytes != 64<<20 || c.Budget.MaxDurationMs != 1500 {
+		t.Fatalf("budget = %+v", c.Budget)
+	}
+}
+
+func TestLoadConfigPartialFields(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "partial", "pk", nil)
+	path := filepath.Join(root, "partial", ConfigFile)
+	if err := os.WriteFile(path, []byte(`{"maxDurationMs": 800}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Budget == nil || got[0].Budget.MaxDurationMs != 800 || got[0].Budget.MaxPeakMemoryBytes != 0 {
+		t.Fatalf("partial budget = %+v", got[0].Budget)
+	}
+}
+
+func TestLoadConfigInvalidJSON(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "bad", "pk", nil)
+	if err := os.WriteFile(filepath.Join(root, "bad", ConfigFile), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(root)
+	if err == nil || !strings.Contains(err.Error(), ConfigFile) {
+		t.Fatalf("want %s parse error, got %v", ConfigFile, err)
+	}
+}
+
+func TestLoadConfigEmptyFile(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "emptycfg", "pk", nil)
+	if err := os.WriteFile(filepath.Join(root, "emptycfg", ConfigFile), []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(root)
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("want empty config error, got %v", err)
+	}
+}
+
+func TestLoadConfigNegativeRejected(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "neg", "pk", nil)
+	if err := os.WriteFile(filepath.Join(root, "neg", ConfigFile), []byte(`{"maxDurationMs":-1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(root)
+	if err == nil || !strings.Contains(err.Error(), "negative") {
+		t.Fatalf("want negative budget error, got %v", err)
+	}
+}
+
+func TestWriteBudgetRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	want := Budget{MaxPeakMemoryBytes: 1000, MaxDurationMs: 20}
+	if err := WriteBudget(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	got, path, err := loadBudget(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(dir, ConfigFile) {
+		t.Fatalf("path=%q", path)
+	}
+	if got == nil || *got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
 func TestLoadNonEmptyScript(t *testing.T) {
 	root := t.TempDir()
 	js := "Excel.run(async () => { await Excel.run(); });\n"
@@ -345,6 +459,57 @@ func TestSelectAmbiguousID(t *testing.T) {
 	}
 }
 
+func TestPendingScriptedGoldens(t *testing.T) {
+	root := t.TempDir()
+	js := "await Excel.run(async (context) => { await context.sync(); });\n"
+	writeCase(t, filepath.Join(root, "scratch"), "pending", "pk", &js)
+	writeCase(t, filepath.Join(root, "scratch"), "done", "pk", &js)
+	writeCase(t, filepath.Join(root, "roundtrip"), "rt", "pk", nil)
+
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var done *Case
+	for i := range all {
+		if all[i].Name == "done" {
+			done = &all[i]
+			break
+		}
+	}
+	if done == nil {
+		t.Fatal("missing done")
+	}
+	if err := os.WriteFile(done.GoldenPath, []byte("pk"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	all, err = Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := PendingScriptedGoldens(all)
+	if len(got) != 1 || got[0].ID != "scratch/pending" {
+		t.Fatalf("PendingScriptedGoldens = %+v, want scratch/pending", got)
+	}
+}
+
+func TestMissingBudget(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "plain", "pk", nil)
+	writeCase(t, root, "capped", "pk", nil)
+	if err := WriteBudget(filepath.Join(root, "capped"), Budget{MaxDurationMs: 10}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := MissingBudget(all)
+	if len(got) != 1 || got[0].ID != "plain" {
+		t.Fatalf("MissingBudget = %+v, want plain", got)
+	}
+}
+
 func TestGoldenComparePassSkipsMissingGolden(t *testing.T) {
 	root := t.TempDir()
 	js := "await Excel.run(async (context) => { await context.sync(); });\n"
@@ -403,10 +568,10 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if len(all) != 103 {
-		t.Fatalf("real corpus: got %d cases, want 103", len(all))
+	if n := len(all); n < 193 || n > 213 {
+		t.Fatalf("real corpus: got %d cases, want 193-213 (103 existing + 90-110 officejs)", n)
 	}
-	wantSuites := "default,roundtrip,scratch"
+	wantSuites := "default,officejs,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
 		t.Fatalf("real corpus suites=%v, want %s", corpus.Suites, wantSuites)
 	}
@@ -445,7 +610,7 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("case %s must live under a suite directory, not %s", e.Name(), DirName)
 		}
 	}
-	var nRT, nDef, nScratch int
+	var nRT, nDef, nScratch, nOfficejs int
 	for _, c := range all {
 		switch c.Suite {
 		case "roundtrip":
@@ -460,13 +625,18 @@ func TestLoadRealCorpus(t *testing.T) {
 			if !c.RunScript() {
 				t.Errorf("%s: scratch case must be scripted", c.ID)
 			}
+		case "officejs":
+			nOfficejs++
+			if !c.RunScript() {
+				t.Errorf("%s: officejs case must be scripted", c.ID)
+			}
 		default:
 			t.Errorf("%s: unexpected suite %q", c.ID, c.Suite)
 		}
 		if c.ID != c.Suite+"/"+c.Name {
 			t.Errorf("%s: ID must be suite/name, Name=%q Suite=%q", c.ID, c.Name, c.Suite)
 		}
-		if c.Suite != "scratch" && !allowedDefaultScript(c.Name) && (c.RunScript() || c.ScriptPath != "") {
+		if c.Suite != "scratch" && c.Suite != "officejs" && !allowedDefaultScript(c.Name) && (c.RunScript() || c.ScriptPath != "") {
 			t.Errorf("%s: unexpected script %q", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
@@ -486,6 +656,12 @@ func TestLoadRealCorpus(t *testing.T) {
 	if nRT != 83 || nDef != 5 || nScratch != 15 {
 		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 83/5/15", nRT, nDef, nScratch)
 	}
+	if nOfficejs < 90 || nOfficejs > 110 {
+		t.Fatalf("officejs cases: %d, want 90-110", nOfficejs)
+	}
+	if len(all) != nRT+nDef+nScratch+nOfficejs {
+		t.Fatalf("suite counts do not sum to corpus len %d", len(all))
+	}
 
 	var scripted []Case
 	var simpleSetA1 *Case
@@ -498,8 +674,8 @@ func TestLoadRealCorpus(t *testing.T) {
 			simpleSetA1 = c
 		}
 	}
-	if len(scripted) != nDef+nScratch {
-		t.Fatalf("scripted cases: got %d, want %d (all default + scratch)", len(scripted), nDef+nScratch)
+	if len(scripted) != nDef+nScratch+nOfficejs {
+		t.Fatalf("scripted cases: got %d, want %d (all default + scratch + officejs)", len(scripted), nDef+nScratch+nOfficejs)
 	}
 	if simpleSetA1 == nil || !simpleSetA1.RunScript() || simpleSetA1.Suite != "default" || simpleSetA1.Name != "simple_set_a1" {
 		t.Fatalf("scripted case default/simple_set_a1 missing or not runnable")
@@ -560,16 +736,24 @@ func TestLoadRealCorpus(t *testing.T) {
 
 	goldenPass := GoldenComparePass(all)
 	pending := pendingGoldenIDs(all)
-	if len(pending) != 0 {
-		t.Fatalf("all loaded cases should have goldens, pending=%v", pending)
+	if len(pending) != nOfficejs {
+		t.Fatalf("pending goldens: %d, want %d officejs cases (existing 103 keep goldens)", len(pending), nOfficejs)
 	}
-	if len(goldenPass) != len(all) {
-		t.Fatalf("golden-compare pass len=%d, want all %d", len(goldenPass), len(all))
+	for _, id := range pending {
+		if !strings.HasPrefix(id, "officejs/") {
+			t.Errorf("unexpected pending golden %s (only officejs may lack goldens)", id)
+		}
+	}
+	if len(goldenPass) != len(all)-len(pending) {
+		t.Fatalf("golden-compare pass len=%d, want %d (all minus pending officejs)", len(goldenPass), len(all)-len(pending))
 	}
 	for _, c := range goldenPass {
 		st, err := os.Stat(c.GoldenPath)
 		if err != nil || st.Size() == 0 {
 			t.Errorf("%s: GoldenComparePass included a case with no golden", c.ID)
+		}
+		if c.Suite == "officejs" {
+			t.Errorf("GoldenComparePass included officejs %s (no golden yet)", c.ID)
 		}
 	}
 
@@ -581,9 +765,17 @@ func TestLoadRealCorpus(t *testing.T) {
 		if c.RunScript() {
 			t.Errorf("open+save pass included scripted %s", c.ID)
 		}
-		if c.Suite == "scratch" {
-			t.Errorf("open+save pass included scratch %s", c.ID)
+		if c.Suite == "scratch" || c.Suite == "officejs" {
+			t.Errorf("open+save pass included scripted suite %s", c.ID)
 		}
+	}
+
+	byOfficejs, err := FilterSuite(all, "officejs", corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byOfficejs) != nOfficejs {
+		t.Fatalf("FilterSuite officejs len=%d, want %d", len(byOfficejs), nOfficejs)
 	}
 
 	bySuite, err := FilterSuite(all, "scratch", corpus.Suites)
@@ -744,8 +936,8 @@ func TestScratchSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(scratch); n < 10 || n > 20 {
-		t.Fatalf("scratch cases: %d, want 10-20", n)
+	if n := len(scratch); n < 15 {
+		t.Fatalf("scratch cases: %d, want at least the original 15", n)
 	}
 	for _, c := range scratch {
 		if c.Suite != "scratch" || !strings.HasPrefix(c.ID, "scratch/") {
@@ -772,9 +964,11 @@ func TestScratchSuite(t *testing.T) {
 		if !bytes.Equal(initData, emptyInit) {
 			t.Errorf("%s: init.xlsx must be a byte-identical copy of roundtrip/empty", c.ID)
 		}
-		st, err := os.Stat(c.GoldenPath)
-		if err != nil || st.Size() == 0 {
-			t.Errorf("%s: scratch must have a committed golden.xlsx", c.ID)
+		if originalScratchNames[c.Name] {
+			st, err := os.Stat(c.GoldenPath)
+			if err != nil || st.Size() == 0 {
+				t.Errorf("%s: original scratch case must have a committed golden.xlsx", c.ID)
+			}
 		}
 		body, err := os.ReadFile(c.ScriptPath)
 		if err != nil {
@@ -831,8 +1025,8 @@ func TestScratchSuite(t *testing.T) {
 			nScratchGolden++
 		}
 	}
-	if nScratchGolden != len(scratch) {
-		t.Errorf("GoldenComparePass scratch count=%d, want %d", nScratchGolden, len(scratch))
+	if nScratchGolden < 15 {
+		t.Errorf("GoldenComparePass scratch count=%d, want at least the original 15 goldens", nScratchGolden)
 	}
 	def := DefaultPass(corpus.Cases)
 	var nScratchDefault int
@@ -843,6 +1037,149 @@ func TestScratchSuite(t *testing.T) {
 	}
 	if nScratchDefault != len(scratch) {
 		t.Fatalf("DefaultPass scratch count=%d, want %d (unprefixed scratch included)", nScratchDefault, len(scratch))
+	}
+	for name := range originalScratchNames {
+		found := false
+		for _, c := range scratch {
+			if c.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing original scratch case %s", name)
+		}
+	}
+}
+
+func TestOfficejsSuite(t *testing.T) {
+	root := repoCasesDir(t)
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, s := range corpus.Suites {
+		if s == "officejs" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("corpus is missing suite officejs")
+	}
+
+	officejs, err := FilterSuite(corpus.Cases, "officejs", corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(officejs); n < 90 || n > 110 {
+		t.Fatalf("officejs cases: %d, want 90-110", n)
+	}
+
+	emptyInit, err := os.ReadFile(filepath.Join(root, "roundtrip", "empty", InitFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var bodies []byte
+	for _, c := range officejs {
+		if !c.RunScript() {
+			t.Errorf("%s: officejs case must have a non-empty script.js", c.ID)
+			continue
+		}
+		initData, err := os.ReadFile(c.InitPath)
+		if err != nil {
+			t.Errorf("%s: init: %v", c.ID, err)
+			continue
+		}
+		if !bytes.Equal(initData, emptyInit) {
+			t.Errorf("%s: init.xlsx must be a byte-identical copy of roundtrip/empty", c.ID)
+		}
+		st, err := os.Stat(c.GoldenPath)
+		if err == nil && st.Size() > 0 {
+			t.Errorf("%s: officejs case must not have a golden yet", c.ID)
+		}
+		if c.Budget != nil || c.ConfigPath != "" {
+			t.Errorf("%s: officejs case must not ship a budget config yet", c.ID)
+		}
+		if _, err := os.Stat(filepath.Join(c.Dir, ConfigFile)); err == nil {
+			t.Errorf("%s: must not have %s until measure-budgets runs on Windows", c.ID, ConfigFile)
+		}
+		body, err := os.ReadFile(c.ScriptPath)
+		if err != nil {
+			t.Errorf("%s: script: %v", c.ID, err)
+			continue
+		}
+		if len(bytes.TrimSpace(body)) == 0 {
+			t.Errorf("%s: script.js is empty; discovery would skip it", c.ID)
+			continue
+		}
+		if !bytes.Contains(body, []byte("Excel.run")) {
+			t.Errorf("%s: script.js is not Office.js Excel.run:\n%s", c.ID, body)
+		}
+		bodies = append(bodies, body...)
+		bodies = append(bodies, '\n')
+	}
+
+	joined := string(bodies)
+	for _, needle := range []string{
+		"tables.add",
+		"pivotTables.add",
+		"charts.add",
+		"FILTER(",
+		"UNIQUE(",
+		"SORT(",
+		"XLOOKUP(",
+		"SEQUENCE(",
+		"format.font",
+		"format.fill",
+		"numberFormat",
+		"conditionalFormats",
+		"dataValidation",
+		"autoFilter",
+		"comments.add",
+		"hyperlink",
+		"names.add",
+		"freezePanes",
+		"tab.color",
+		".sort.apply",
+		".insert(",
+		"for (let i = 1; i <= 500; i++)",
+		"TableStyleMedium2",
+		"Excel.ChartType.pie",
+		"Excel.ChartType.line",
+		"Excel.ChartType.xyScatter",
+		"columnHierarchies.add",
+		"filterHierarchies.add",
+		"showTotals",
+		"style = \"Good\"",
+	} {
+		if !strings.Contains(joined, needle) {
+			t.Errorf("officejs suite missing %s", needle)
+		}
+	}
+
+	for _, c := range OpenSavePass(corpus.Cases) {
+		if c.Suite == "officejs" {
+			t.Errorf("OpenSavePass included officejs %s", c.ID)
+		}
+	}
+	golden := GoldenComparePass(corpus.Cases)
+	for _, c := range golden {
+		if c.Suite == "officejs" {
+			t.Errorf("GoldenComparePass included officejs %s", c.ID)
+		}
+	}
+	def := DefaultPass(corpus.Cases)
+	var nDefault int
+	for _, c := range def {
+		if c.Suite == "officejs" {
+			nDefault++
+		}
+	}
+	if nDefault != len(officejs) {
+		t.Fatalf("DefaultPass officejs count=%d, want %d", nDefault, len(officejs))
 	}
 }
 
@@ -902,6 +1239,24 @@ func TestLoadFlatUnprefixedCases(t *testing.T) {
 	if _, ok := byID["table"]; !ok {
 		t.Fatalf("missing table: %+v", byID)
 	}
+}
+
+var originalScratchNames = map[string]bool{
+	"text":                   true,
+	"numbers":                true,
+	"column_row_sizes":       true,
+	"freeze_panes":           true,
+	"spill":                  true,
+	"named_range":            true,
+	"merge":                  true,
+	"number_format":          true,
+	"add_sheet":              true,
+	"table":                  true,
+	"chart":                  true,
+	"conditional_formatting": true,
+	"pivot_table":            true,
+	"data_validation":        true,
+	"autofilter":             true,
 }
 
 func allowedDefaultScript(name string) bool {
