@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -306,6 +307,122 @@ func TestCompareFilesRoundtripFormulasInitVsGolden(t *testing.T) {
 	t.Logf("unequal: roundtrip/formulas cached values %v", got.Diffs)
 }
 
+func TestCompareUnequalOnNumberFormat(t *testing.T) {
+	percent := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXML(10),
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="1"><v>0.25</v></c></row></sheetData></worksheet>`,
+	})
+	general := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXML(0),
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="1"><v>0.25</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Compare(percent, general)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("numFmt 0.00% vs General must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" && d.Location == "Sheet1!A1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles Sheet1!A1, got %v", got.Diffs)
+	}
+	t.Logf("unequal: number format %v", got.Diffs)
+}
+
+func TestCompareEqualOnSameResolvedStyleDifferentIndex(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLTwoPercentXFs(),
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="1"><v>0.25</v></c></row></sheetData></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLTwoPercentXFs(),
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="2"><v>0.25</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("same resolved 0.00%% at different xf indexes must be equal, got %v", got.Diffs)
+	}
+}
+
+func TestCompareEqualOnThemeDisplayNames(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
+	st := stylesXML(0)
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            st,
+		"xl/theme/theme1.xml":      themeXML("Office Theme", "Office", "000000", "FFFFFF"),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            st,
+		"xl/theme/theme1.xml":      themeXML("Office 2013 - 2022 Theme", "Office 2013 - 2022", "000000", "FFFFFF"),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("theme display names must not fail, got %v", got.Diffs)
+	}
+	t.Log("equal: theme name= labels with matching color slots")
+}
+
+func TestCompareUnequalOnThemeSlotColor(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
+	st := stylesXML(0)
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            st,
+		"xl/theme/theme1.xml":      themeXML("Office Theme", "Office", "000000", "FFFFFF"),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            st,
+		"xl/theme/theme1.xml":      themeXML("Office Theme", "Office", "FF0000", "FFFFFF"),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("theme slot color change must fail")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles diff, got %v", got.Diffs)
+	}
+}
+
+func TestCompareEqualOnDefaultRowHeightNoise(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetFormatPr defaultRowHeight="16"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetFormatPr defaultRowHeight="15.5" defaultColWidth="10.6640625"/><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("default row/col size rewrite must not fail, got %v", got.Diffs)
+	}
+}
+
 func TestCompareFilesRoundtripSimpleInitVsGolden(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -348,6 +465,52 @@ func workbookXML1904WithX15(date1904 string) string {
 <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
 <extLst><ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}"><x15:workbookPr chartTrackingRefBase="1"/></ext></extLst>
 </workbook>`
+}
+
+func stylesXML(cellXfNumFmt int) string {
+	return `<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+		`<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/></font></fonts>` +
+		`<fills count="1"><fill><patternFill patternType="none"/></fill></fills>` +
+		`<borders count="1"><border/></borders>` +
+		`<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>` +
+		`<xf numFmtId="` + itoa(cellXfNumFmt) + `" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`
+}
+
+func stylesXMLTwoPercentXFs() string {
+	return `<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+		`<fonts count="1"><font><sz val="12"/><name val="Calibri"/></font></fonts>` +
+		`<fills count="1"><fill><patternFill patternType="none"/></fill></fills>` +
+		`<borders count="1"><border/></borders>` +
+		`<cellXfs count="3">` +
+		`<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>` +
+		`<xf numFmtId="10" fontId="0" fillId="0" borderId="0"/>` +
+		`<xf numFmtId="10" fontId="0" fillId="0" borderId="0"/>` +
+		`</cellXfs></styleSheet>`
+}
+
+func themeXML(themeName, schemeName, dk1, lt1 string) string {
+	return `<?xml version="1.0"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="` + themeName + `">` +
+		`<a:themeElements><a:clrScheme name="` + schemeName + `">` +
+		`<a:dk1><a:srgbClr val="` + dk1 + `"/></a:dk1>` +
+		`<a:lt1><a:srgbClr val="` + lt1 + `"/></a:lt1>` +
+		`<a:dk2><a:srgbClr val="44546A"/></a:dk2>` +
+		`<a:lt2><a:srgbClr val="E7E6E6"/></a:lt2>` +
+		`<a:accent1><a:srgbClr val="4472C4"/></a:accent1>` +
+		`<a:accent2><a:srgbClr val="ED7D31"/></a:accent2>` +
+		`<a:accent3><a:srgbClr val="A5A5A5"/></a:accent3>` +
+		`<a:accent4><a:srgbClr val="FFC000"/></a:accent4>` +
+		`<a:accent5><a:srgbClr val="5B9BD5"/></a:accent5>` +
+		`<a:accent6><a:srgbClr val="70AD47"/></a:accent6>` +
+		`<a:hlink><a:srgbClr val="0563C1"/></a:hlink>` +
+		`<a:folHlink><a:srgbClr val="954F72"/></a:folHlink>` +
+		`</a:clrScheme></a:themeElements></a:theme>`
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	return strconv.Itoa(n)
 }
 
 func sheetInline(value string) string {
