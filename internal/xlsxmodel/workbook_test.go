@@ -84,6 +84,36 @@ func TestCompareUnequalOnDate1904(t *testing.T) {
 	t.Logf("unequal: date1904 0 vs 1 %v", got.Diffs)
 }
 
+func TestCompareUnequalOnDate1904NotClobberedByX15WorkbookPr(t *testing.T) {
+	// Corpus Excel files emit a later x15:workbookPr with no date1904.
+	// Matching Local=="workbookPr" would overwrite date1904=1 with false.
+	with1904 := mustXLSX(t, map[string]string{
+		"xl/workbook.xml":          workbookXML1904WithX15("1"),
+		"xl/worksheets/sheet1.xml": sheetInline("hello"),
+	})
+	without := mustXLSX(t, map[string]string{
+		"xl/workbook.xml":          workbookXML("0"),
+		"xl/worksheets/sheet1.xml": sheetInline("hello"),
+	})
+	got, err := Compare(with1904, without)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("date1904=1 plus x15:workbookPr vs date1904=0 must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "date1904" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want date1904 diff, got %v", got.Diffs)
+	}
+	t.Logf("unequal: date1904=1 with trailing x15:workbookPr vs 0 %v", got.Diffs)
+}
+
 func TestCompareEqualWhenDate1904AbsentMeans1900(t *testing.T) {
 	absent := mustXLSX(t, map[string]string{
 		"xl/workbook.xml":          `<workbook><workbookPr/><sheets><sheet name="Sheet1" r:id="rId1"/></sheets></workbook>`,
@@ -152,6 +182,15 @@ func workbookXML(date1904 string) string {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <workbookPr calcId="1" date1904="` + date1904 + `"/>
 <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`
+}
+
+func workbookXML1904WithX15(date1904 string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main">
+<workbookPr calcId="1" date1904="` + date1904 + `"/>
+<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+<extLst><ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}"><x15:workbookPr chartTrackingRefBase="1"/></ext></extLst>
 </workbook>`
 }
 

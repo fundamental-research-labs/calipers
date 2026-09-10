@@ -18,6 +18,8 @@ import (
 	"strings"
 )
 
+const spreadsheetML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
 // Workbook is the PR1 semantic model.
 type Workbook struct {
 	Date1904 bool
@@ -207,7 +209,12 @@ func parseWorkbook(raw []byte) workbookMeta {
 		}
 		switch se.Name.Local {
 		case "workbookPr":
-			meta.date1904 = is1904(attr(se, "date1904"))
+			if se.Name.Space != "" && se.Name.Space != spreadsheetML {
+				continue
+			}
+			if v := attr(se, "date1904"); v != "" {
+				meta.date1904 = is1904(v)
+			}
 		case "sheet":
 			meta.sheets = append(meta.sheets, sheetRef{name: attr(se, "name"), rid: attr(se, "id")})
 		}
