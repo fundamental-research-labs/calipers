@@ -560,31 +560,11 @@ func TestLoadRealCorpus(t *testing.T) {
 
 	goldenPass := GoldenComparePass(all)
 	pending := pendingGoldenIDs(all)
-	if len(goldenPass) != len(all)-len(pending) {
-		t.Fatalf("golden-compare pass len=%d, want %d (loaded minus pending goldens)", len(goldenPass), len(all)-len(pending))
+	if len(pending) != 0 {
+		t.Fatalf("all loaded cases should have goldens, pending=%v", pending)
 	}
-	wantPending := []string{
-		"roundtrip/custom_view_printer_settings",
-		"roundtrip/theme_linked_colors",
-		"default/names_add_defined_names_order",
-		"default/add_sheet_sparse_ids",
-		"default/chart_titles",
-		"default/multi_row_formulas",
-	}
-	if len(pending) != len(wantPending) {
-		t.Fatalf("pending goldens=%v, want %v", pending, wantPending)
-	}
-	for _, id := range wantPending {
-		found := false
-		for _, got := range pending {
-			if got == id {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("missing pending-golden case %s in %v", id, pending)
-		}
+	if len(goldenPass) != len(all) {
+		t.Fatalf("golden-compare pass len=%d, want all %d", len(goldenPass), len(all))
 	}
 	for _, c := range goldenPass {
 		st, err := os.Stat(c.GoldenPath)
@@ -632,9 +612,6 @@ func TestCommittedOpenSaveGoldens(t *testing.T) {
 	for i, c := range OpenSavePass(all) {
 		st, err := os.Stat(c.GoldenPath)
 		if err != nil {
-			if pendingGoldenCase(c.ID) {
-				continue
-			}
 			t.Errorf("%s: missing golden.xlsx", c.ID)
 			continue
 		}
@@ -918,20 +895,6 @@ func allowedDefaultScript(name string) bool {
 		"add_sheet_sparse_ids",
 		"chart_titles",
 		"multi_row_formulas":
-		return true
-	default:
-		return false
-	}
-}
-
-func pendingGoldenCase(id string) bool {
-	switch id {
-	case "roundtrip/custom_view_printer_settings",
-		"roundtrip/theme_linked_colors",
-		"default/names_add_defined_names_order",
-		"default/add_sheet_sparse_ids",
-		"default/chart_titles",
-		"default/multi_row_formulas":
 		return true
 	default:
 		return false

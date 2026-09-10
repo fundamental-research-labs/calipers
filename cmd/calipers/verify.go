@@ -159,8 +159,10 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 	}
 
 	var nPass, nFail, nErr, nSkip int
+	outcomes := make([]caseOutcome, 0, len(selected))
 	for i, c := range selected {
 		o := verifyOne(eng, c, outDir, packageDiag)
+		outcomes = append(outcomes, o)
 		switch o.Status {
 		case "pass":
 			nPass++
@@ -183,9 +185,29 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 		fmt.Fprintf(w, "verify: %d pass, %d fail, %d error\n", nPass, nFail, nErr)
 	}
 	if nFail+nErr > 0 {
+		fmt.Fprint(w, formatDifferences(outcomes))
 		return fmt.Errorf("%d failed, %d error", nFail, nErr)
 	}
 	return nil
+}
+
+func formatDifferences(outcomes []caseOutcome) string {
+	var b strings.Builder
+	b.WriteString("\nDifferences:\n")
+	for _, o := range outcomes {
+		if o.Status != "fail" && o.Status != "error" {
+			continue
+		}
+		fmt.Fprintf(&b, "  %s %s\n", o.ID, strings.ToUpper(o.Status))
+		for _, line := range strings.Split(o.Detail, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "(") {
+				continue
+			}
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
+	}
+	return b.String()
 }
 
 func hasGolden(c cases.Case) bool {
@@ -235,8 +257,12 @@ func formatSemantic(sem xlsxmodel.Result) string {
 	if sem.Equal {
 		return "(semantic match)"
 	}
+	noun := "difference"
+	if len(sem.Diffs) != 1 {
+		noun = "differences"
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "(semantic diffs: %d)", len(sem.Diffs))
+	fmt.Fprintf(&b, "(%d %s)", len(sem.Diffs), noun)
 	for _, d := range sem.Diffs {
 		b.WriteString("\n  ")
 		if d.Location != "" {

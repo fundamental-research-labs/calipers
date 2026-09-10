@@ -3,6 +3,7 @@ package xlsxmodel
 import (
 	"bytes"
 	"encoding/xml"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -179,7 +180,7 @@ func readXf(dec *xml.Decoder, se xml.StartElement) rawXf {
 }
 
 func readFont(dec *xml.Decoder, theme map[string]string) string {
-	var name, sz, u, color string
+	var name, sz, u, color, scheme string
 	bold, italic := false, false
 	walkLeaves(dec, func(se xml.StartElement) {
 		switch se.Name.Local {
@@ -196,10 +197,17 @@ func readFont(dec *xml.Decoder, theme map[string]string) string {
 			if u == "" {
 				u = "single"
 			}
+		case "scheme":
+			scheme = attr(se, "val")
 		case "color":
 			color = resolveColor(se, theme)
 		}
 	})
+	// Theme latin/ea/cs typeface (Calibri vs Aptos Narrow) is not cell-authored
+	// when scheme is major/minor. Compare the scheme slot instead.
+	if scheme == "minor" || scheme == "major" {
+		name = "scheme:" + scheme
+	}
 	return strings.Join([]string{name, sz, bool01(bold), bool01(italic), u, color}, ",")
 }
 
@@ -220,20 +228,29 @@ func readFill(dec *xml.Decoder, theme map[string]string) string {
 
 func readBorder(dec *xml.Decoder, theme map[string]string) string {
 	var parts []string
-	side := ""
+	sideName, style, color := "", "", ""
 	walkDepth(dec, func(se xml.StartElement) {
 		switch se.Name.Local {
 		case "left", "right", "top", "bottom", "diagonal":
-			side = se.Name.Local + ":" + attr(se, "style")
+			sideName = se.Name.Local
+			style = attr(se, "style")
+			color = ""
 		case "color":
-			if side != "" {
-				side += ":" + resolveColor(se, theme)
+			if sideName != "" {
+				color = resolveColor(se, theme)
 			}
 		}
 	}, func(local string) {
 		if local == "left" || local == "right" || local == "top" || local == "bottom" || local == "diagonal" {
-			parts = append(parts, side)
-			side = ""
+			// Empty <left/> (Excel default) is the same as an omitted side.
+			if style != "" {
+				part := sideName + ":" + style
+				if color != "" {
+					part += ":" + color
+				}
+				parts = append(parts, part)
+			}
+			sideName, style, color = "", "", ""
 		}
 	})
 	return strings.Join(parts, ";")
@@ -280,7 +297,7 @@ func resolveColor(se xml.StartElement, theme map[string]string) string {
 			rgb = "theme:" + th
 		}
 		if tint := attr(se, "tint"); tint != "" {
-			return rgb + "@" + tint
+			return rgb + "@" + normalizeTint(tint)
 		}
 		return rgb
 	}
@@ -333,6 +350,15 @@ func parseTheme(raw []byte) map[string]string {
 		}
 	}
 	return out
+}
+
+func normalizeTint(s string) string {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return s
+	}
+	// Excel ST_Percentage often serializes 0.2 as 0.19998779259620961.
+	return strconv.FormatFloat(math.Round(f*1e4)/1e4, 'f', 4, 64)
 }
 
 func atoi(s string) int {

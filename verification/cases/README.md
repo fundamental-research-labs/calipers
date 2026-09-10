@@ -9,7 +9,7 @@ Cases live in a **suite** directory (`roundtrip/`, `default/`, or `scratch/`) as
 | [`scratch/`](scratch/) | Office.js from an empty init (one feature per script; committed `excel-run` goldens) |
 | [`_disabled/`](_disabled/) | Hostile / later cases (not loaded) |
 
-Pending Excel-win goldens (init only; `calipers verify` skips until [`GOLDENS.md`](../GOLDENS.md) is run on Windows):
+Committed Excel-win goldens for XLSX roundtrip/lost-info cases (regenerate with [`GOLDENS.md`](../GOLDENS.md)):
 
 | Case | Issue | Semantic gate | Golden command |
 |------|-------|---------------|----------------|

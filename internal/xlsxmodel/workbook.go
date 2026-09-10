@@ -238,9 +238,35 @@ func cellDiffs(loc string, a, b Value) []Diff {
 	if a.Formula != b.Formula || a.FKind != b.FKind || a.FRef != b.FRef {
 		diffs = append(diffs, Diff{Axis: "formulas", Location: loc, Detail: fmt.Sprintf("expected %q got %q", formulaKey(b), formulaKey(a))})
 	}
-	if a.Style != b.Style {
-		diffs = append(diffs, Diff{Axis: "styles", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.Style, a.Style)})
+	diffs = append(diffs, styleDiffs(loc, a.Style, b.Style)...)
+	return diffs
+}
+
+func styleDiffs(loc string, a, b Style) []Diff {
+	if a == b {
+		return nil
 	}
+	var diffs []Diff
+	add := func(field, got, want string) {
+		if got != want {
+			if want == "" {
+				want = "(none)"
+			}
+			if got == "" {
+				got = "(none)"
+			}
+			diffs = append(diffs, Diff{
+				Axis:     "styles",
+				Location: loc,
+				Detail:   fmt.Sprintf("%s: expected %s got %s", field, want, got),
+			})
+		}
+	}
+	add("numFmt", a.NumFmt, b.NumFmt)
+	add("font", a.Font, b.Font)
+	add("fill", a.Fill, b.Fill)
+	add("border", a.Border, b.Border)
+	add("align", a.Align, b.Align)
 	return diffs
 }
 

@@ -40,11 +40,11 @@ calipers excel-run verification\cases\default\multi_row_formulas\init.xlsx verif
 
 Each successful run also writes `golden.xlsx.meta.json` beside the golden.
 
-## Verify without goldens
+## Verify with committed goldens
 
-`calipers verify --engine <bin>` skips cases that have no `golden.xlsx`. That is expected until the commands above have been run on Windows.
+Goldens for the six cases above are committed (`host=excel-win`). `calipers verify --engine <bin>` still skips any case that has no `golden.xlsx`.
 
-After goldens exist, PASS/FAIL is **semantic** compare (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`). Charts, printer settings, `sheetId`, and workbook XML child order are **not** in that gate. For those, also run:
+PASS/FAIL is **semantic** compare (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`). A failing run prints each case’s diffs and a `Differences:` recap. Charts, printer settings, `sheetId`, and workbook XML child order are **not** in that gate. For those, also run:
 
 ```bat
 calipers verify --engine <mog-bin> --package --case roundtrip\custom_view_printer_settings
