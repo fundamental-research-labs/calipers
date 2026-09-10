@@ -290,22 +290,10 @@ func TestCompareFilesRoundtripFormulasInitVsGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Equal {
-		t.Fatal("formulas init v=0 vs golden cached values must be unequal")
+	if !got.Equal {
+		t.Fatalf("formulas init vs golden must match after Excel Save As (cached values included), got %v", got.Diffs)
 	}
-	found := false
-	for _, d := range got.Diffs {
-		if d.Axis == "values" && d.Location == "Sheet1!C1" {
-			found = true
-		}
-		if d.Axis == "formulas" {
-			t.Fatalf("formula text should match; got %v", got.Diffs)
-		}
-	}
-	if !found {
-		t.Fatalf("want values Sheet1!C1 (0 vs 15), got %v", got.Diffs)
-	}
-	t.Logf("unequal: roundtrip/formulas cached values %v", got.Diffs)
+	t.Log("equal: roundtrip/formulas init.xlsx vs golden.xlsx (resolved formula values)")
 }
 
 func TestCompareUnequalOnNumberFormat(t *testing.T) {
