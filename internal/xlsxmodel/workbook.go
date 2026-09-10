@@ -1,6 +1,6 @@
 // Package xlsxmodel parses xlsx archives into workbook semantics (sheets,
-// cell values, date1904) and diffs those models. It is not ZIP-part or XML
-// string equality. Types, formulas, styles, names, merges, and freeze are
+// cell values, types, formulas, date1904) and diffs those models. It is not
+// ZIP-part or XML string equality. Styles, names, merges, and freeze are
 // later PRs. calipers verify still gates on compare.Files.
 package xlsxmodel
 
@@ -20,18 +20,32 @@ import (
 
 const spreadsheetML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
-// Workbook is the PR1 semantic model.
+// Workbook is the semantic model (values, types, formulas, date1904).
 type Workbook struct {
 	Date1904 bool
 	// Cells is sheet name → A1 → value.
 	Cells map[string]map[string]Value
 }
 
-// Value is a resolved cell value. Numbers compare as IEEE-754 binary64.
+// CellType is the resolved OOXML cell type.
+type CellType string
+
+const (
+	TypeNumber CellType = "number"
+	TypeString CellType = "string"
+	TypeBool   CellType = "boolean"
+	TypeError  CellType = "error"
+)
+
+// Value is a resolved cell: type, value, and formula text (if any).
+// Numbers compare as IEEE-754 binary64. Formula is shared-expanded A1 text.
 type Value struct {
-	Number bool
-	F      float64
-	S      string
+	Type    CellType
+	F       float64
+	S       string
+	Formula string
+	FKind   string // "array" when <f t="array">; empty after shared expansion
+	FRef    string
 }
 
 // Diff is one semantic mismatch (not a ZIP part).
@@ -47,7 +61,7 @@ type Result struct {
 	Diffs []Diff
 }
 
-// CompareFiles parses two xlsx files and diffs values / date1904.
+// CompareFiles parses two xlsx files and diffs values, types, formulas, date1904.
 func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	export, err := os.ReadFile(exportPath)
 	if err != nil {
@@ -60,7 +74,7 @@ func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	return Compare(export, golden)
 }
 
-// Compare parses two xlsx blobs and diffs values / date1904.
+// Compare parses two xlsx blobs and diffs values, types, formulas, date1904.
 func Compare(export, golden []byte) (Result, error) {
 	a, err := Parse(export)
 	if err != nil {
@@ -73,7 +87,7 @@ func Compare(export, golden []byte) (Result, error) {
 	return DiffWorkbooks(a, b), nil
 }
 
-// Parse reads an xlsx archive into sheets, A1 values, and date1904.
+// Parse reads an xlsx archive into sheets, A1 values/types/formulas, and date1904.
 // Absent workbookPr@date1904 means the 1900 date system (not 1904).
 func Parse(data []byte) (Workbook, error) {
 	parts, err := readParts(data)
@@ -103,7 +117,7 @@ func Parse(data []byte) (Workbook, error) {
 	return wb, nil
 }
 
-// DiffWorkbooks compares date1904 and resolved cell values.
+// DiffWorkbooks compares date1904, types, formula text, and resolved values.
 func DiffWorkbooks(a, b Workbook) Result {
 	var diffs []Diff
 	if a.Date1904 != b.Date1904 {
@@ -120,22 +134,20 @@ func DiffWorkbooks(a, b Workbook) Result {
 			bv, ok := b.Cells[sheet][ref]
 			loc := sheet + "!" + ref
 			if !ok {
-				diffs = append(diffs, Diff{Axis: "values", Location: loc, Detail: "present in export, missing in golden"})
+				diffs = append(diffs, missingDiffs(loc, av, "present in export, missing in golden")...)
 				continue
 			}
-			if d := valueDiff(loc, av, bv); d != nil {
-				diffs = append(diffs, *d)
-			}
+			diffs = append(diffs, cellDiffs(loc, av, bv)...)
 		}
 	}
 	for sheet, cells := range b.Cells {
-		for ref := range cells {
+		for ref, bv := range cells {
 			k := key{sheet, ref}
 			if _, ok := seen[k]; ok {
 				continue
 			}
 			loc := sheet + "!" + ref
-			diffs = append(diffs, Diff{Axis: "values", Location: loc, Detail: "present in golden, missing in export"})
+			diffs = append(diffs, missingDiffs(loc, bv, "present in golden, missing in export")...)
 		}
 	}
 	sort.Slice(diffs, func(i, j int) bool {
@@ -147,14 +159,54 @@ func DiffWorkbooks(a, b Workbook) Result {
 	return Result{Equal: len(diffs) == 0, Diffs: diffs}
 }
 
+func missingDiffs(loc string, v Value, detail string) []Diff {
+	var diffs []Diff
+	if v.Type != "" {
+		diffs = append(diffs, Diff{Axis: "values", Location: loc, Detail: detail})
+	}
+	if v.Formula != "" || v.FKind != "" {
+		diffs = append(diffs, Diff{Axis: "formulas", Location: loc, Detail: detail})
+	}
+	if len(diffs) == 0 {
+		diffs = append(diffs, Diff{Axis: "values", Location: loc, Detail: detail})
+	}
+	return diffs
+}
+
+func cellDiffs(loc string, a, b Value) []Diff {
+	var diffs []Diff
+	if a.Type != b.Type {
+		diffs = append(diffs, Diff{Axis: "types", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.Type, a.Type)})
+	} else if d := valueDiff(loc, a, b); d != nil {
+		diffs = append(diffs, *d)
+	}
+	if a.Formula != b.Formula || a.FKind != b.FKind || a.FRef != b.FRef {
+		diffs = append(diffs, Diff{Axis: "formulas", Location: loc, Detail: fmt.Sprintf("expected %q got %q", formulaKey(b), formulaKey(a))})
+	}
+	return diffs
+}
+
+func formulaKey(v Value) string {
+	if v.FKind == "" && v.FRef == "" {
+		return v.Formula
+	}
+	return v.FKind + ":" + v.FRef + ":" + v.Formula
+}
+
 func valueDiff(loc string, a, b Value) *Diff {
-	if a.Number && b.Number {
+	if a.Type == TypeNumber && b.Type == TypeNumber {
 		if math.Float64bits(a.F) == math.Float64bits(b.F) {
 			return nil
 		}
 		return &Diff{Axis: "values", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.S, a.S)}
 	}
-	if !a.Number && !b.Number && a.S == b.S {
+	if a.Type == TypeBool && b.Type == TypeBool {
+		if a.F == b.F {
+			return nil
+		}
+		return &Diff{Axis: "values", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.S, a.S)}
+	}
+	if a.S == b.S {
 		return nil
 	}
 	return &Diff{Axis: "values", Location: loc, Detail: fmt.Sprintf("expected %q got %q", b.S, a.S)}
@@ -336,11 +388,39 @@ func parseSST(raw []byte) []string {
 	return sst
 }
 
+type rawCell struct {
+	ref, t, v, inline   string
+	f, fType, fRef, fSi string
+}
+
 func parseSheet(raw []byte, sst []string) map[string]Value {
 	cells := map[string]Value{}
-	if len(raw) == 0 {
-		return cells
+	raws := collectCells(raw)
+	masters := map[string]rawCell{}
+	for _, c := range raws {
+		if c.fType == "shared" && c.f != "" {
+			masters[c.fSi] = c
+		}
 	}
+	for _, c := range raws {
+		val, ok := cellValue(c.t, c.v, c.inline, sst)
+		formula, kind, aref := resolveFormula(c, masters)
+		if !ok && formula == "" && kind == "" {
+			continue
+		}
+		val.Formula = formula
+		val.FKind = kind
+		val.FRef = aref
+		cells[c.ref] = val
+	}
+	return cells
+}
+
+func collectCells(raw []byte) []rawCell {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out []rawCell
 	dec := xml.NewDecoder(bytes.NewReader(raw))
 	for {
 		tok, err := dec.Token()
@@ -356,22 +436,39 @@ func parseSheet(raw []byte, sst []string) map[string]Value {
 			skip(dec)
 			continue
 		}
-		t := attr(se, "t")
-		vtext, ttext := readCell(dec)
-		if val, ok := cellValue(t, vtext, ttext, sst); ok {
-			cells[ref] = val
-		}
+		c := rawCell{ref: ref, t: attr(se, "t")}
+		c.v, c.inline, c.f, c.fType, c.fRef, c.fSi = readCell(dec)
+		out = append(out, c)
 	}
-	return cells
+	return out
 }
 
-func readCell(dec *xml.Decoder) (vtext, ttext string) {
+func resolveFormula(c rawCell, masters map[string]rawCell) (formula, kind, aref string) {
+	switch c.fType {
+	case "shared":
+		m, ok := masters[c.fSi]
+		src := c.f
+		from := c.ref
+		if src == "" && ok {
+			src = m.f
+			from = m.ref
+		}
+		dCol, dRow := deltaA1(from, c.ref)
+		return shiftFormula(src, dCol, dRow), "", ""
+	case "array":
+		return c.f, "array", c.fRef
+	default:
+		return c.f, "", ""
+	}
+}
+
+func readCell(dec *xml.Decoder) (vtext, ttext, ftext, fType, fRef, fSi string) {
 	depth := 1
-	inV, inT := false, false
+	inV, inT, inF := false, false, false
 	for depth > 0 {
 		tok, err := dec.Token()
 		if err != nil {
-			return vtext, ttext
+			return
 		}
 		switch e := tok.(type) {
 		case xml.StartElement:
@@ -381,6 +478,11 @@ func readCell(dec *xml.Decoder) (vtext, ttext string) {
 				inV = true
 			case "t":
 				inT = true
+			case "f":
+				inF = true
+				fType = attr(e, "t")
+				fRef = attr(e, "ref")
+				fSi = attr(e, "si")
 			}
 		case xml.EndElement:
 			switch e.Name.Local {
@@ -388,18 +490,23 @@ func readCell(dec *xml.Decoder) (vtext, ttext string) {
 				inV = false
 			case "t":
 				inT = false
+			case "f":
+				inF = false
 			}
 			depth--
 		case xml.CharData:
 			if inV {
 				vtext += string(e)
 			}
-			if inT {
+			if inT && !inF {
 				ttext += string(e)
+			}
+			if inF {
+				ftext += string(e)
 			}
 		}
 	}
-	return vtext, ttext
+	return
 }
 
 func skip(dec *xml.Decoder) {
@@ -421,29 +528,34 @@ func skip(dec *xml.Decoder) {
 func cellValue(t, vtext, ttext string, sst []string) (Value, bool) {
 	switch t {
 	case "inlineStr":
-		return Value{S: ttext}, true
+		return Value{Type: TypeString, S: ttext}, true
 	case "s":
 		i, err := strconv.Atoi(strings.TrimSpace(vtext))
 		if err != nil || i < 0 || i >= len(sst) {
-			return Value{S: vtext}, true
+			return Value{Type: TypeString, S: vtext}, true
 		}
-		return Value{S: sst[i]}, true
+		return Value{Type: TypeString, S: sst[i]}, true
 	case "str":
-		return Value{S: vtext}, true
+		return Value{Type: TypeString, S: vtext}, true
+	case "b":
+		s := strings.TrimSpace(vtext)
+		f, _ := strconv.ParseFloat(s, 64)
+		return Value{Type: TypeBool, F: f, S: s}, true
+	case "e":
+		return Value{Type: TypeError, S: vtext}, true
 	default:
-		// number (t missing or t="n"), or other v-bearing cells
 		if vtext == "" && ttext == "" {
 			return Value{}, false
 		}
-		if t == "n" || t == "" || t == "b" {
+		if t == "n" || t == "" {
 			if f, err := strconv.ParseFloat(strings.TrimSpace(vtext), 64); err == nil {
-				return Value{Number: true, F: f, S: strings.TrimSpace(vtext)}, true
+				return Value{Type: TypeNumber, F: f, S: strings.TrimSpace(vtext)}, true
 			}
 		}
 		if ttext != "" {
-			return Value{S: ttext}, true
+			return Value{Type: TypeString, S: ttext}, true
 		}
-		return Value{S: vtext}, true
+		return Value{Type: TypeString, S: vtext}, true
 	}
 }
 

@@ -150,6 +150,162 @@ func TestCompareEqualOnEmptyVsSelfClosingCompany(t *testing.T) {
 	}
 }
 
+func TestCompareUnequalOnBooleanVsNumber(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="3"><c r="B3" t="b"><v>1</v></c></row></sheetData></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="3"><c r="B3"><v>1</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("boolean t=b vs number 1 must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "types" && d.Location == "Sheet1!B3" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want types Sheet1!B3, got %v", got.Diffs)
+	}
+	t.Logf("unequal: boolean vs number %v", got.Diffs)
+}
+
+func TestCompareUnequalOnFormulaText(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="C1"><f>A1+B1</f><v>15</v></c></row></sheetData></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="C1"><f>A1-B1</f><v>15</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("A1+B1 vs A1-B1 must be unequal even with the same cached v")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "formulas" && d.Location == "Sheet1!C1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want formulas Sheet1!C1, got %v", got.Diffs)
+	}
+	for _, d := range got.Diffs {
+		if d.Axis == "values" {
+			t.Fatalf("cached value matches; extra values diff: %v", got.Diffs)
+		}
+	}
+	t.Logf("unequal: formula text %v", got.Diffs)
+}
+
+func TestCompareUnequalOnCachedFormulaValue(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="C1"><f>A1+B1</f><v>0</v></c></row></sheetData></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="C1"><f>A1+B1</f><v>15</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("cached v=0 vs v=15 must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "values" && d.Location == "Sheet1!C1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want values Sheet1!C1, got %v", got.Diffs)
+	}
+	for _, d := range got.Diffs {
+		if d.Axis == "formulas" {
+			t.Fatalf("formula text matches; extra formulas diff: %v", got.Diffs)
+		}
+	}
+	t.Logf("unequal: cached formula value %v", got.Diffs)
+}
+
+func TestCompareEqualOnSharedFormulaExpansion(t *testing.T) {
+	shared := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData>` +
+			`<row r="2"><c r="A2"><f t="shared" ref="A2:A3" si="0">B2</f><v>1</v></c></row>` +
+			`<row r="3"><c r="A3"><f t="shared" si="0"/><v>2</v></c></row>` +
+			`</sheetData></worksheet>`,
+	})
+	expanded := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData>` +
+			`<row r="2"><c r="A2"><f>B2</f><v>1</v></c></row>` +
+			`<row r="3"><c r="A3"><f>B3</f><v>2</v></c></row>` +
+			`</sheetData></worksheet>`,
+	})
+	got, err := Compare(shared, expanded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("shared B2 at A2/A3 must match expanded B2/B3, got %v", got.Diffs)
+	}
+	t.Log("equal: shared formula expansion B2 -> B3")
+}
+
+func TestCompareEqualOnSSTVsInlineStr(t *testing.T) {
+	sst := mustXLSX(t, map[string]string{
+		"xl/sharedStrings.xml":     `<sst><si><t>hello</t></si></sst>`,
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>`,
+	})
+	inline := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": sheetInline("hello"),
+	})
+	got, err := Compare(sst, inline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("SST and inlineStr are the same string type, got %v", got.Diffs)
+	}
+}
+
+func TestCompareFilesRoundtripFormulasInitVsGolden(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	dir := filepath.Join(filepath.Dir(file), "..", "..", "verification", "cases", "roundtrip", "formulas")
+	got, err := CompareFiles(filepath.Join(dir, "init.xlsx"), filepath.Join(dir, "golden.xlsx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("formulas init v=0 vs golden cached values must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "values" && d.Location == "Sheet1!C1" {
+			found = true
+		}
+		if d.Axis == "formulas" {
+			t.Fatalf("formula text should match; got %v", got.Diffs)
+		}
+	}
+	if !found {
+		t.Fatalf("want values Sheet1!C1 (0 vs 15), got %v", got.Diffs)
+	}
+	t.Logf("unequal: roundtrip/formulas cached values %v", got.Diffs)
+}
+
 func TestCompareFilesRoundtripSimpleInitVsGolden(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
