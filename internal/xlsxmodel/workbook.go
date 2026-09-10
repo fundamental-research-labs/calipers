@@ -1,7 +1,7 @@
 // Package xlsxmodel parses xlsx archives into workbook semantics (sheets,
-// cell values, types, formulas, styles, date1904) and diffs those models. It
-// is not ZIP-part or XML string equality. Names, merges, and freeze are later
-// PRs. calipers verify still gates on compare.Files.
+// cell values, types, formulas, styles, names, merges, freeze, date1904) and
+// diffs those models. It is not ZIP-part or XML string equality. calipers
+// verify still gates on compare.Files.
 package xlsxmodel
 
 import (
@@ -20,11 +20,37 @@ import (
 
 const spreadsheetML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
-// Workbook is the semantic model (values, types, formulas, styles, date1904).
+// Workbook is the semantic model.
 type Workbook struct {
 	Date1904 bool
+	Sheets   []SheetInfo // name + visibility, workbook order (not rId/sheetId)
+	Names    []DefinedName
 	// Cells is sheet name → A1 → value.
-	Cells map[string]map[string]Value
+	Cells  map[string]map[string]Value
+	Merges map[string][]string // sheet → merge refs
+	Freeze map[string]Freeze   // sheet → pane
+}
+
+// SheetInfo is sheet identity: name and visibility in workbook order.
+type SheetInfo struct {
+	Name  string
+	State string // "", "hidden", "veryHidden"
+}
+
+// DefinedName is a workbook or sheet-local name.
+type DefinedName struct {
+	Name       string
+	Formula    string
+	LocalSheet string // localSheetId; empty = workbook scope
+}
+
+// Freeze is a frozen pane on one sheet.
+type Freeze struct {
+	State      string // frozen / frozenSplit
+	XSplit     string
+	YSplit     string
+	TopLeft    string
+	ActivePane string
 }
 
 // CellType is the resolved OOXML cell type.
@@ -62,7 +88,7 @@ type Result struct {
 	Diffs []Diff
 }
 
-// CompareFiles parses two xlsx files and diffs values, types, formulas, styles, date1904.
+// CompareFiles parses two xlsx files and diffs the semantic model.
 func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	export, err := os.ReadFile(exportPath)
 	if err != nil {
@@ -75,7 +101,7 @@ func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	return Compare(export, golden)
 }
 
-// Compare parses two xlsx blobs and diffs values, types, formulas, styles, date1904.
+// Compare parses two xlsx blobs and diffs the semantic model.
 func Compare(export, golden []byte) (Result, error) {
 	a, err := Parse(export)
 	if err != nil {
@@ -97,29 +123,52 @@ func Parse(data []byte) (Workbook, error) {
 	}
 	sst := parseSST(parts["xl/sharedStrings.xml"])
 	styles := parseStyleBook(parts["xl/styles.xml"], parts["xl/theme/theme1.xml"])
-	wb := Workbook{Cells: map[string]map[string]Value{}}
+	wb := Workbook{
+		Cells:  map[string]map[string]Value{},
+		Merges: map[string][]string{},
+		Freeze: map[string]Freeze{},
+	}
 	if raw, ok := parts["xl/workbook.xml"]; ok {
 		meta := parseWorkbook(raw)
 		wb.Date1904 = meta.date1904
+		wb.Names = meta.names
 		paths := sheetPaths(meta.sheets, parts)
 		for i, s := range meta.sheets {
-			cells := parseSheet(parts[paths[i]], sst, styles)
-			wb.Cells[s.name] = cells
+			wb.Sheets = append(wb.Sheets, SheetInfo{Name: s.name, State: s.state})
+			ps := parseSheet(parts[paths[i]], sst, styles)
+			wb.Cells[s.name] = ps.cells
+			if len(ps.merges) > 0 {
+				wb.Merges[s.name] = ps.merges
+			}
+			if ps.freeze != (Freeze{}) {
+				wb.Freeze[s.name] = ps.freeze
+			}
 		}
 		return wb, nil
 	}
-	names := worksheetNames(parts)
-	if len(names) == 0 {
+	files := worksheetNames(parts)
+	if len(files) == 0 {
 		return wb, nil
 	}
-	wb.Cells["Sheet1"] = parseSheet(parts[names[0]], sst, styles)
-	for i := 1; i < len(names); i++ {
-		wb.Cells[fmt.Sprintf("Sheet%d", i+1)] = parseSheet(parts[names[i]], sst, styles)
+	for i, path := range files {
+		name := "Sheet1"
+		if i > 0 {
+			name = fmt.Sprintf("Sheet%d", i+1)
+		}
+		wb.Sheets = append(wb.Sheets, SheetInfo{Name: name})
+		ps := parseSheet(parts[path], sst, styles)
+		wb.Cells[name] = ps.cells
+		if len(ps.merges) > 0 {
+			wb.Merges[name] = ps.merges
+		}
+		if ps.freeze != (Freeze{}) {
+			wb.Freeze[name] = ps.freeze
+		}
 	}
 	return wb, nil
 }
 
-// DiffWorkbooks compares date1904, types, formula text, and resolved values.
+// DiffWorkbooks compares the semantic model.
 func DiffWorkbooks(a, b Workbook) Result {
 	var diffs []Diff
 	if a.Date1904 != b.Date1904 {
@@ -128,6 +177,8 @@ func DiffWorkbooks(a, b Workbook) Result {
 			Detail: fmt.Sprintf("expected %v got %v", b.Date1904, a.Date1904),
 		})
 	}
+	diffs = append(diffs, sheetDiffs(a.Sheets, b.Sheets)...)
+	diffs = append(diffs, nameDiffs(a.Names, b.Names)...)
 	type key struct{ sheet, ref string }
 	seen := map[key]struct{}{}
 	for sheet, cells := range a.Cells {
@@ -152,6 +203,8 @@ func DiffWorkbooks(a, b Workbook) Result {
 			diffs = append(diffs, missingDiffs(loc, bv, "present in golden, missing in export")...)
 		}
 	}
+	diffs = append(diffs, mergeDiffs(a.Merges, b.Merges)...)
+	diffs = append(diffs, freezeDiffs(a.Freeze, b.Freeze)...)
 	sort.Slice(diffs, func(i, j int) bool {
 		if diffs[i].Axis != diffs[j].Axis {
 			return diffs[i].Axis < diffs[j].Axis
@@ -187,6 +240,105 @@ func cellDiffs(loc string, a, b Value) []Diff {
 	}
 	if a.Style != b.Style {
 		diffs = append(diffs, Diff{Axis: "styles", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.Style, a.Style)})
+	}
+	return diffs
+}
+
+func sheetDiffs(a, b []SheetInfo) []Diff {
+	if sheetKey(a) == sheetKey(b) {
+		return nil
+	}
+	return []Diff{{Axis: "sheets", Detail: fmt.Sprintf("expected %s got %s", sheetKey(b), sheetKey(a))}}
+}
+
+func sheetKey(ss []SheetInfo) string {
+	parts := make([]string, len(ss))
+	for i, s := range ss {
+		st := s.State
+		if st == "" {
+			st = "visible"
+		}
+		parts[i] = s.Name + ":" + st
+	}
+	return strings.Join(parts, ",")
+}
+
+func nameDiffs(a, b []DefinedName) []Diff {
+	am, bm := nameMap(a), nameMap(b)
+	var diffs []Diff
+	for k, af := range am {
+		bf, ok := bm[k]
+		if !ok {
+			diffs = append(diffs, Diff{Axis: "names", Location: k, Detail: "present in export, missing in golden"})
+			continue
+		}
+		if af != bf {
+			diffs = append(diffs, Diff{Axis: "names", Location: k, Detail: fmt.Sprintf("expected %q got %q", bf, af)})
+		}
+	}
+	for k := range bm {
+		if _, ok := am[k]; !ok {
+			diffs = append(diffs, Diff{Axis: "names", Location: k, Detail: "present in golden, missing in export"})
+		}
+	}
+	return diffs
+}
+
+func nameMap(ns []DefinedName) map[string]string {
+	out := map[string]string{}
+	for _, n := range ns {
+		k := n.Name
+		if n.LocalSheet != "" {
+			k += "@" + n.LocalSheet
+		}
+		out[k] = n.Formula
+	}
+	return out
+}
+
+func mergeDiffs(a, b map[string][]string) []Diff {
+	am, bm := mergeSet(a), mergeSet(b)
+	var diffs []Diff
+	for p := range am {
+		if !bm[p] {
+			diffs = append(diffs, Diff{Axis: "merges", Location: p.sheet + "!" + p.ref, Detail: "present in export, missing in golden"})
+		}
+	}
+	for p := range bm {
+		if !am[p] {
+			diffs = append(diffs, Diff{Axis: "merges", Location: p.sheet + "!" + p.ref, Detail: "present in golden, missing in export"})
+		}
+	}
+	return diffs
+}
+
+func mergeSet(m map[string][]string) map[struct{ sheet, ref string }]bool {
+	out := map[struct{ sheet, ref string }]bool{}
+	for sheet, refs := range m {
+		for _, ref := range refs {
+			out[struct{ sheet, ref string }{sheet, ref}] = true
+		}
+	}
+	return out
+}
+
+func freezeDiffs(a, b map[string]Freeze) []Diff {
+	seen := map[string]struct{}{}
+	var diffs []Diff
+	for sheet, af := range a {
+		seen[sheet] = struct{}{}
+		bf := b[sheet]
+		if af != bf {
+			diffs = append(diffs, Diff{Axis: "freeze", Location: sheet, Detail: fmt.Sprintf("expected %+v got %+v", bf, af)})
+		}
+	}
+	for sheet, bf := range b {
+		if _, ok := seen[sheet]; ok {
+			continue
+		}
+		if bf != (Freeze{}) {
+			diffs = append(diffs, Diff{Axis: "freeze", Location: sheet, Detail: fmt.Sprintf("expected %+v got none", bf)})
+		}
 	}
 	return diffs
 }
@@ -243,13 +395,13 @@ func readParts(data []byte) (map[string][]byte, error) {
 }
 
 type sheetRef struct {
-	name string
-	rid  string
+	name, rid, state string
 }
 
 type workbookMeta struct {
 	date1904 bool
 	sheets   []sheetRef
+	names    []DefinedName
 }
 
 func parseWorkbook(raw []byte) workbookMeta {
@@ -273,10 +425,38 @@ func parseWorkbook(raw []byte) workbookMeta {
 				meta.date1904 = is1904(v)
 			}
 		case "sheet":
-			meta.sheets = append(meta.sheets, sheetRef{name: attr(se, "name"), rid: attr(se, "id")})
+			meta.sheets = append(meta.sheets, sheetRef{name: attr(se, "name"), rid: attr(se, "id"), state: attr(se, "state")})
+		case "definedName":
+			meta.names = append(meta.names, DefinedName{
+				Name:       attr(se, "name"),
+				LocalSheet: attr(se, "localSheetId"),
+				Formula:    readElementText(dec),
+			})
 		}
 	}
 	return meta
+}
+
+func readElementText(dec *xml.Decoder) string {
+	var b strings.Builder
+	depth := 1
+	for depth > 0 {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		switch e := tok.(type) {
+		case xml.StartElement:
+			depth++
+		case xml.EndElement:
+			depth--
+		case xml.CharData:
+			if depth == 1 {
+				b.Write(e)
+			}
+		}
+	}
+	return b.String()
 }
 
 func is1904(v string) bool {
@@ -398,9 +578,17 @@ type rawCell struct {
 	f, fType, fRef, fSi  string
 }
 
-func parseSheet(raw []byte, sst []string, styles *styleBook) map[string]Value {
-	cells := map[string]Value{}
-	raws := collectCells(raw)
+type parsedSheet struct {
+	cells  map[string]Value
+	merges []string
+	freeze Freeze
+}
+
+func parseSheet(raw []byte, sst []string, styles *styleBook) parsedSheet {
+	out := parsedSheet{cells: map[string]Value{}}
+	raws, merges, freeze := collectSheet(raw)
+	out.merges = merges
+	out.freeze = freeze
 	masters := map[string]rawCell{}
 	for _, c := range raws {
 		if c.fType == "shared" && c.f != "" {
@@ -418,16 +606,15 @@ func parseSheet(raw []byte, sst []string, styles *styleBook) map[string]Value {
 		val.FKind = kind
 		val.FRef = aref
 		val.Style = st
-		cells[c.ref] = val
+		out.cells[c.ref] = val
 	}
-	return cells
+	return out
 }
 
-func collectCells(raw []byte) []rawCell {
+func collectSheet(raw []byte) (cells []rawCell, merges []string, freeze Freeze) {
 	if len(raw) == 0 {
-		return nil
+		return nil, nil, Freeze{}
 	}
-	var out []rawCell
 	dec := xml.NewDecoder(bytes.NewReader(raw))
 	for {
 		tok, err := dec.Token()
@@ -435,19 +622,37 @@ func collectCells(raw []byte) []rawCell {
 			break
 		}
 		se, ok := tok.(xml.StartElement)
-		if !ok || se.Name.Local != "c" {
+		if !ok {
 			continue
 		}
-		ref := attr(se, "r")
-		if ref == "" {
-			skip(dec)
-			continue
+		switch se.Name.Local {
+		case "c":
+			ref := attr(se, "r")
+			if ref == "" {
+				skip(dec)
+				continue
+			}
+			c := rawCell{ref: ref, t: attr(se, "t"), s: attr(se, "s")}
+			c.v, c.inline, c.f, c.fType, c.fRef, c.fSi = readCell(dec)
+			cells = append(cells, c)
+		case "mergeCell":
+			if ref := attr(se, "ref"); ref != "" {
+				merges = append(merges, ref)
+			}
+		case "pane":
+			st := attr(se, "state")
+			if st == "frozen" || st == "frozenSplit" {
+				freeze = Freeze{
+					State:      st,
+					XSplit:     attr(se, "xSplit"),
+					YSplit:     attr(se, "ySplit"),
+					TopLeft:    attr(se, "topLeftCell"),
+					ActivePane: attr(se, "activePane"),
+				}
+			}
 		}
-		c := rawCell{ref: ref, t: attr(se, "t"), s: attr(se, "s")}
-		c.v, c.inline, c.f, c.fType, c.fRef, c.fSi = readCell(dec)
-		out = append(out, c)
 	}
-	return out
+	return cells, merges, freeze
 }
 
 func resolveFormula(c rawCell, masters map[string]rawCell) (formula, kind, aref string) {

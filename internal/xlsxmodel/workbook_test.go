@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -423,6 +424,208 @@ func TestCompareEqualOnDefaultRowHeightNoise(t *testing.T) {
 	}
 }
 
+func TestCompareUnequalOnSheetOrder(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookSheets(`<sheet name="Sales" sheetId="1" r:id="rId1"/><sheet name="Expenses" sheetId="2" r:id="rId2"/>`),
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookSheets(`<sheet name="Expenses" sheetId="1" r:id="rId1"/><sheet name="Sales" sheetId="2" r:id="rId2"/>`),
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("Sales/Expenses vs reverse order must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "sheets" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want sheets diff, got %v", got.Diffs)
+	}
+	t.Logf("unequal: sheet order %v", got.Diffs)
+}
+
+func TestCompareEqualOnSheetIdAndRid(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookSheets(`<sheet name="Sales" sheetId="1" r:id="rId1"/><sheet name="Expenses" sheetId="2" r:id="rId2"/>`),
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookSheets(`<sheet name="Sales" sheetId="9" r:id="rId9"/><sheet name="Expenses" sheetId="3" r:id="rId3"/>`),
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("sheetId/rId must not fail, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnHiddenSheet(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookSheets(`<sheet name="Sheet1" sheetId="1" state="hidden" r:id="rId1"/><sheet name="Sheet2" sheetId="2" r:id="rId2"/>`),
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookSheets(`<sheet name="Sheet1" sheetId="1" r:id="rId1"/><sheet name="Sheet2" sheetId="2" r:id="rId2"/>`),
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("hidden vs visible Sheet1 must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "sheets" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want sheets diff, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnDefinedName(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookNames(`<definedName name="Answer">Sheet1!$A$1</definedName>`),
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookNames(`<definedName name="Other">Sheet1!$A$1</definedName>`),
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("defined name Answer vs Other must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "names" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want names diff, got %v", got.Diffs)
+	}
+	t.Logf("unequal: defined names %v", got.Diffs)
+}
+
+func TestCompareEqualOnDefinedNameOrder(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookNames(`<definedName name="Answer">Sheet1!$A$1</definedName><definedName name="col1_">'Named Ranges'!$A$2:$A$6</definedName>`),
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/workbook.xml": workbookNames(`<definedName name="col1_">'Named Ranges'!$A$2:$A$6</definedName><definedName name="Answer">Sheet1!$A$1</definedName>`),
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("definedName element order must not fail, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnMerge(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData/><mergeCells count="1"><mergeCell ref="A1:B2"/></mergeCells></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData/></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("merge A1:B2 vs none must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "merges" && strings.Contains(d.Location, "A1:B2") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want merges A1:B2, got %v", got.Diffs)
+	}
+	t.Logf("unequal: merge %v", got.Diffs)
+}
+
+func TestCompareEqualOnMergeOrder(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData/><mergeCells count="2"><mergeCell ref="A1:B2"/><mergeCell ref="C1:C2"/></mergeCells></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetData/><mergeCells count="2"><mergeCell ref="C1:C2"/><mergeCell ref="A1:B2"/></mergeCells></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("mergeCell order must not fail, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnFreeze(t *testing.T) {
+	a := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData/></worksheet>`,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/worksheets/sheet1.xml": `<?xml version="1.0"?><worksheet><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetData/></worksheet>`,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("frozen ySplit=1 vs none must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "freeze" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want freeze diff, got %v", got.Diffs)
+	}
+	t.Logf("unequal: freeze %v", got.Diffs)
+}
+
+func TestCompareFilesFreezePanesInitVsGolden(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	dir := filepath.Join(filepath.Dir(file), "..", "..", "verification", "cases", "scratch", "freeze_panes")
+	got, err := CompareFiles(filepath.Join(dir, "init.xlsx"), filepath.Join(dir, "golden.xlsx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("freeze_panes init vs golden must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "freeze" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want freeze axis, got %v", got.Diffs)
+	}
+	t.Logf("unequal: scratch/freeze_panes %v", got.Diffs)
+}
+
 func TestCompareFilesRoundtripSimpleInitVsGolden(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -448,6 +651,21 @@ func TestCompareFilesMissing(t *testing.T) {
 	if _, err := CompareFiles(p, filepath.Join(dir, "missing.xlsx")); err == nil {
 		t.Fatal("missing golden should error")
 	}
+}
+
+func workbookSheets(inner string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>` + inner + `</sheets>
+</workbook>`
+}
+
+func workbookNames(inner string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+<definedNames>` + inner + `</definedNames>
+</workbook>`
 }
 
 func workbookXML(date1904 string) string {
