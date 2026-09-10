@@ -27,7 +27,7 @@ Excel-saved vs engine-saved is **never** byte-identical (timestamps, `calcId`, s
 | **Semantic** | Resolved cell values, types, formulas, styles, sheets, names, merges, freeze, `date1904` | Current `verify` PASS/FAIL |
 | **Package** | ZIP-part contents after selected metadata exclusions and XML line-ending normalization | Optional `verify --package` diagnostic (does not change PASS/FAIL) |
 
-FAIL lines are semantic diffs (`values: Sheet1!C1 expected 15 got 0`), not ZIP-part counts. XML attribute/element ordering, numeric encodings of the same binary64 value, shared-string indexes, relationship IDs, style IDs, theme display names, and default row/col layout are not the gate. `verify --package` still reports those as differing ZIP parts.
+FAIL lines are semantic diffs (`values: Sheet1!C1 expected 15 got 0`), not ZIP-part counts. A failing walk also prints a `Differences:` recap listing every FAIL/ERROR case. XML attribute/element ordering, numeric encodings of the same binary64 value, shared-string indexes, relationship IDs, style IDs, theme display names, Excel ST_Percentage tint text (`0.2` vs `0.19998779259620961`), empty border sides, and default row/col layout are not the gate. Font name and size are the gate. `verify --package` still reports those as differing ZIP parts.
 
 A package match does not prove that formulas were evaluated. By default, `verify` uses the host's existing `save`/`run` behavior. Opt-in `verify --engine PATH --recalculate` requests full recalculation before export by passing `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>`. The selected external engine must support this flag. The selected policy is printed before verification. Engines retain their original argv when the flag is absent. `--engine` is required (binary path or `excel`).
 
@@ -48,7 +48,7 @@ Excel does **not** execute Office.js through COM. `excel-run` sideloads a local 
 
 ## Cases (`cases/`)
 
-Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Case directories are feature names. Missing or empty `script.js` means load+save only. **97 cases** (81 roundtrip, 1 default, 15 scratch). Eight hostiles live in `_disabled/` and are not loaded.
+Cases are grouped into **suites** (test categories): `cases/<suite>/<case>/` with required `init.xlsx`, optional `script.js`, and a dedicated `golden.xlsx` destination (not mixed into the inits). Case directories are feature names. Missing or empty `script.js` means load+save only. **103 cases** (83 roundtrip, 5 default, 15 scratch). Eight hostiles live in `_disabled/` and are not loaded. Six XLSX roundtrip/lost-info cases (custom views, theme colors, names.add order, sparse sheet IDs, chart titles, multi-row formulas) have committed Excel-win goldens. `verify` skips a case that has no `golden.xlsx`.
 
 | Suite | Role |
 |-------|------|

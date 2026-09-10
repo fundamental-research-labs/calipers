@@ -142,14 +142,30 @@ func TestVerifyCellValueFailsCompare(t *testing.T) {
 	if err == nil {
 		t.Fatal("value mismatch should fail the walk")
 	}
-	if !strings.Contains(buf.String(), "FAIL (semantic diffs:") {
-		t.Fatalf("output must identify semantic diffs: %s", buf.String())
+	out := buf.String()
+	if !strings.Contains(out, "FAIL (1 difference)") {
+		t.Fatalf("output must identify semantic diffs: %s", out)
 	}
-	if !strings.Contains(buf.String(), "values: Sheet1!A1") {
-		t.Fatalf("output must name the cell: %s", buf.String())
+	if !strings.Contains(out, "values: Sheet1!A1") {
+		t.Fatalf("output must name the cell: %s", out)
 	}
-	if strings.Contains(buf.String(), "differing package parts") {
-		t.Fatalf("FAIL must not be ZIP-part counts: %s", buf.String())
+	if !strings.Contains(out, "Differences:") {
+		t.Fatalf("FAIL must recap a Differences list: %s", out)
+	}
+	failIdx := strings.Index(out, "FAIL")
+	recapIdx := strings.Index(out, "Differences:")
+	if failIdx < 0 || recapIdx < failIdx {
+		t.Fatalf("Differences recap must come after the case FAIL line: %s", out)
+	}
+	recap := out[recapIdx:]
+	if !strings.Contains(recap, "mismatch FAIL") {
+		t.Fatalf("Differences recap must name the failing case: %s", out)
+	}
+	if !strings.Contains(recap, "values: Sheet1!A1") {
+		t.Fatalf("Differences recap must list the cell diff: %s", out)
+	}
+	if strings.Contains(out, "differing package parts") {
+		t.Fatalf("FAIL must not be ZIP-part counts: %s", out)
 	}
 }
 
@@ -486,6 +502,27 @@ func TestRunVerifyCLISuiteAndCase(t *testing.T) {
 	restore()
 	if err == nil || !strings.Contains(err.Error(), "unknown case") {
 		t.Fatalf("error = %v, want unknown case outside suite", err)
+	}
+}
+
+func TestRunVerifyCLICaseWithoutGoldenSkips(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeNestedVerifyCaseNoGolden(t, root, "roundtrip", "pending", "hello", nil)
+	fake := &fakeEngine{}
+	restore := stubBinaryHost(t, fake)
+
+	out, err := captureStdout(t, func() error {
+		return run([]string{"verify", "--engine", "dummy", "--cases-dir", root, "--out-dir", outDir, "--case", "roundtrip/pending"})
+	})
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.opens) != 0 || len(fake.scripts) != 0 {
+		t.Fatalf("missing golden must skip without running the engine: opens=%v scripts=%v", fake.opens, fake.scripts)
+	}
+	if !strings.Contains(out, "SKIP") || !strings.Contains(out, "no golden.xlsx") {
+		t.Fatalf("output = %s", out)
 	}
 }
 

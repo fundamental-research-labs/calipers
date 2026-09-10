@@ -354,6 +354,183 @@ func TestCompareEqualOnSameResolvedStyleDifferentIndex(t *testing.T) {
 	}
 }
 
+func TestCompareUnequalOnThemeSchemeFontTypeface(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
+	excelFont := `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Aptos Narrow"/><scheme val="minor"/></font></fonts>`
+	mogFont := `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><scheme val="minor"/></font></fonts>`
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(excelFont, defaultFills, emptySidesBorder, defaultXFs),
+		"xl/theme/theme1.xml":      themeXML("Office Theme", "Office", "000000", "FFFFFF"),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(mogFont, defaultFills, omittedSidesBorder, defaultXFs),
+		"xl/theme/theme1.xml":      themeXML("Office Theme", "Office", "000000", "FFFFFF"),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("Aptos Narrow vs Calibri must be a font change even with scheme=minor")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" && strings.Contains(d.Detail, "font:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles font diff, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnAuthoredFontWithoutScheme(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
+	arial := `<fonts count="1"><font><sz val="11"/><name val="Arial"/></font></fonts>`
+	calibri := `<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>`
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(arial, defaultFills, omittedSidesBorder, defaultXFs),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(calibri, defaultFills, omittedSidesBorder, defaultXFs),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("Arial vs Calibri without scheme must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" && d.Location == "Sheet1!A1" && strings.Contains(d.Detail, "font:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles font diff, got %v", got.Diffs)
+	}
+}
+
+func TestCompareEqualOnExcelTintEncoding(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="1"><v>1</v></c></row></sheetData></worksheet>`
+	excelTint := `<fonts count="2"><font><sz val="11"/><name val="Calibri"/><scheme val="minor"/></font>` +
+		`<font><sz val="11"/><color theme="4" tint="0.19998779259620961"/><name val="Calibri"/><scheme val="minor"/></font></fonts>`
+	mogTint := `<fonts count="2"><font><sz val="11"/><name val="Calibri"/><scheme val="minor"/></font>` +
+		`<font><sz val="11"/><color theme="4" tint="0.2"/><name val="Calibri"/><scheme val="minor"/></font></fonts>`
+	xfs := `<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>` +
+		`<xf numFmtId="0" fontId="1" fillId="0" borderId="0" applyFont="1"/></cellXfs>`
+	theme := themeXML("Office Theme", "Office", "000000", "FFFFFF")
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(excelTint, defaultFills, emptySidesBorder, xfs),
+		"xl/theme/theme1.xml":      theme,
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(mogTint, defaultFills, emptySidesBorder, xfs),
+		"xl/theme/theme1.xml":      theme,
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("Excel tint 0.19998779259620961 vs 0.2 must be equal, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnDifferentTint(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="1"><v>1</v></c></row></sheetData></worksheet>`
+	tint02 := `<fonts count="2"><font><sz val="11"/><name val="Calibri"/><scheme val="minor"/></font>` +
+		`<font><sz val="11"/><color theme="4" tint="0.2"/><name val="Calibri"/><scheme val="minor"/></font></fonts>`
+	tint04 := `<fonts count="2"><font><sz val="11"/><name val="Calibri"/><scheme val="minor"/></font>` +
+		`<font><sz val="11"/><color theme="4" tint="0.4"/><name val="Calibri"/><scheme val="minor"/></font></fonts>`
+	xfs := `<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>` +
+		`<xf numFmtId="0" fontId="1" fillId="0" borderId="0" applyFont="1"/></cellXfs>`
+	theme := themeXML("Office Theme", "Office", "000000", "FFFFFF")
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(tint02, defaultFills, emptySidesBorder, xfs),
+		"xl/theme/theme1.xml":      theme,
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(tint04, defaultFills, emptySidesBorder, xfs),
+		"xl/theme/theme1.xml":      theme,
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("tint 0.2 vs 0.4 must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" && strings.Contains(d.Detail, "font:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles font/tint diff, got %v", got.Diffs)
+	}
+}
+
+func TestCompareEqualOnEmptyBorderSides(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
+	font := `<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>`
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(font, defaultFills, emptySidesBorder, defaultXFs),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(font, defaultFills, omittedSidesBorder, defaultXFs),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("empty <left/> sides vs omitted sides must be equal, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnBorderStyle(t *testing.T) {
+	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
+	font := `<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>`
+	thin := `<borders count="1"><border><left style="thin"/><right/><top/><bottom/><diagonal/></border></borders>`
+	a := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(font, defaultFills, thin, defaultXFs),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	b := mustXLSX(t, map[string]string{
+		"xl/styles.xml":            stylesXMLWith(font, defaultFills, omittedSidesBorder, defaultXFs),
+		"xl/worksheets/sheet1.xml": cell,
+	})
+	got, err := Compare(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("thin left border vs none must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "styles" && strings.Contains(d.Detail, "border:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want styles border diff, got %v", got.Diffs)
+	}
+}
+
 func TestCompareEqualOnThemeDisplayNames(t *testing.T) {
 	cell := `<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c></row></sheetData></worksheet>`
 	st := stylesXML(0)
@@ -685,6 +862,13 @@ func workbookXML1904WithX15(date1904 string) string {
 </workbook>`
 }
 
+const (
+	defaultFills       = `<fills count="1"><fill><patternFill patternType="none"/></fill></fills>`
+	emptySidesBorder   = `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>`
+	omittedSidesBorder = `<borders count="1"><border></border></borders>`
+	defaultXFs         = `<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellXfs>`
+)
+
 func stylesXML(cellXfNumFmt int) string {
 	return `<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
 		`<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/></font></fonts>` +
@@ -692,6 +876,11 @@ func stylesXML(cellXfNumFmt int) string {
 		`<borders count="1"><border/></borders>` +
 		`<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>` +
 		`<xf numFmtId="` + itoa(cellXfNumFmt) + `" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`
+}
+
+func stylesXMLWith(fonts, fills, borders, xfs string) string {
+	return `<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+		fonts + fills + borders + xfs + `</styleSheet>`
 }
 
 func stylesXMLTwoPercentXFs() string {

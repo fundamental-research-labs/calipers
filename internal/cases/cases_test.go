@@ -403,8 +403,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if len(all) != 97 {
-		t.Fatalf("real corpus: got %d cases, want 97", len(all))
+	if len(all) != 103 {
+		t.Fatalf("real corpus: got %d cases, want 103", len(all))
 	}
 	wantSuites := "default,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
@@ -466,8 +466,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		if c.ID != c.Suite+"/"+c.Name {
 			t.Errorf("%s: ID must be suite/name, Name=%q Suite=%q", c.ID, c.Name, c.Suite)
 		}
-		if c.Suite != "scratch" && c.Name != "simple_set_a1" && (c.RunScript() || c.ScriptPath != "") {
-			t.Errorf("%s: unexpected script %q (only default/simple_set_a1 and scratch/* are scripted)", c.ID, c.ScriptPath)
+		if c.Suite != "scratch" && !allowedDefaultScript(c.Name) && (c.RunScript() || c.ScriptPath != "") {
+			t.Errorf("%s: unexpected script %q", c.ID, c.ScriptPath)
 		}
 		if _, err := os.Stat(c.InitPath); err != nil {
 			t.Errorf("%s: init: %v", c.ID, err)
@@ -483,8 +483,8 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("%s: Dir=%q, want %q", c.ID, c.Dir, wantDir)
 		}
 	}
-	if nRT != 81 || nDef != 1 || nScratch != 15 {
-		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 81/1/15", nRT, nDef, nScratch)
+	if nRT != 83 || nDef != 5 || nScratch != 15 {
+		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 83/5/15", nRT, nDef, nScratch)
 	}
 
 	var scripted []Case
@@ -498,8 +498,8 @@ func TestLoadRealCorpus(t *testing.T) {
 			simpleSetA1 = c
 		}
 	}
-	if len(scripted) != 1+nScratch {
-		t.Fatalf("scripted cases: got %d, want %d (default/simple_set_a1 + scratch)", len(scripted), 1+nScratch)
+	if len(scripted) != nDef+nScratch {
+		t.Fatalf("scripted cases: got %d, want %d (all default + scratch)", len(scripted), nDef+nScratch)
 	}
 	if simpleSetA1 == nil || !simpleSetA1.RunScript() || simpleSetA1.Suite != "default" || simpleSetA1.Name != "simple_set_a1" {
 		t.Fatalf("scripted case default/simple_set_a1 missing or not runnable")
@@ -559,8 +559,12 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 
 	goldenPass := GoldenComparePass(all)
+	pending := pendingGoldenIDs(all)
+	if len(pending) != 0 {
+		t.Fatalf("all loaded cases should have goldens, pending=%v", pending)
+	}
 	if len(goldenPass) != len(all) {
-		t.Fatalf("golden-compare pass len=%d, want %d (all loaded cases have goldens)", len(goldenPass), len(all))
+		t.Fatalf("golden-compare pass len=%d, want all %d", len(goldenPass), len(all))
 	}
 	for _, c := range goldenPass {
 		st, err := os.Stat(c.GoldenPath)
@@ -882,6 +886,30 @@ func TestLoadFlatUnprefixedCases(t *testing.T) {
 	if _, ok := byID["table"]; !ok {
 		t.Fatalf("missing table: %+v", byID)
 	}
+}
+
+func allowedDefaultScript(name string) bool {
+	switch name {
+	case "simple_set_a1",
+		"names_add_defined_names_order",
+		"add_sheet_sparse_ids",
+		"chart_titles",
+		"multi_row_formulas":
+		return true
+	default:
+		return false
+	}
+}
+
+func pendingGoldenIDs(all []Case) []string {
+	var out []string
+	for _, c := range all {
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
+			out = append(out, c.ID)
+		}
+	}
+	return out
 }
 
 func xlsxContains(t *testing.T, path, needle string) bool {

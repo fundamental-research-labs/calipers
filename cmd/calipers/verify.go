@@ -158,14 +158,18 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 		return nil
 	}
 
-	var nPass, nFail, nErr int
+	var nPass, nFail, nErr, nSkip int
+	outcomes := make([]caseOutcome, 0, len(selected))
 	for i, c := range selected {
 		o := verifyOne(eng, c, outDir, packageDiag)
+		outcomes = append(outcomes, o)
 		switch o.Status {
 		case "pass":
 			nPass++
 		case "fail":
 			nFail++
+		case "skip":
+			nSkip++
 		default:
 			nErr++
 		}
@@ -175,15 +179,52 @@ func runVerifyFilter(eng engine, casesDir, suite string, caseIDs []string, outDi
 		}
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintf(w, "verify: %d pass, %d fail, %d error\n", nPass, nFail, nErr)
+	if nSkip > 0 {
+		fmt.Fprintf(w, "verify: %d pass, %d fail, %d error, %d skip\n", nPass, nFail, nErr, nSkip)
+	} else {
+		fmt.Fprintf(w, "verify: %d pass, %d fail, %d error\n", nPass, nFail, nErr)
+	}
 	if nFail+nErr > 0 {
+		fmt.Fprint(w, formatDifferences(outcomes))
 		return fmt.Errorf("%d failed, %d error", nFail, nErr)
 	}
 	return nil
 }
 
+func formatDifferences(outcomes []caseOutcome) string {
+	var b strings.Builder
+	b.WriteString("\nDifferences:\n")
+	for _, o := range outcomes {
+		if o.Status != "fail" && o.Status != "error" {
+			continue
+		}
+		fmt.Fprintf(&b, "  %s %s\n", o.ID, strings.ToUpper(o.Status))
+		for _, line := range strings.Split(o.Detail, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "(") {
+				continue
+			}
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
+	}
+	return b.String()
+}
+
+func hasGolden(c cases.Case) bool {
+	st, err := os.Stat(c.GoldenPath)
+	return err == nil && st.Size() > 0
+}
+
 func verifyOne(eng engine, c cases.Case, outDir string, packageDiag bool) caseOutcome {
 	exportPath := filepath.Join(outDir, filepath.FromSlash(c.ID)+".xlsx")
+	if !hasGolden(c) {
+		return caseOutcome{
+			ID:     c.ID,
+			Export: exportPath,
+			Status: "skip",
+			Detail: "(no golden.xlsx; generate with calipers excel-save or excel-run)",
+		}
+	}
 	if filepath.Clean(exportPath) == filepath.Clean(c.GoldenPath) {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: "refusing to overwrite golden"}
 	}
@@ -216,8 +257,12 @@ func formatSemantic(sem xlsxmodel.Result) string {
 	if sem.Equal {
 		return "(semantic match)"
 	}
+	noun := "difference"
+	if len(sem.Diffs) != 1 {
+		noun = "differences"
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "(semantic diffs: %d)", len(sem.Diffs))
+	fmt.Fprintf(&b, "(%d %s)", len(sem.Diffs), noun)
 	for _, d := range sem.Diffs {
 		b.WriteString("\n  ")
 		if d.Location != "" {

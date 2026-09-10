@@ -1,0 +1,10 @@
+{
+  "host": "excel-win",
+  "excelVersion": "16.0",
+  "excelBuild": "20326",
+  "os": "windows",
+  "tool": "calipers",
+  "input": "init.xlsx",
+  "script": "script.js",
+  "generatedAt": "2026-09-10T18:44:57Z"
+}
