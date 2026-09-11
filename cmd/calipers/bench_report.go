@@ -79,7 +79,7 @@ func renderBenchHTML(doc BenchFile, svgs map[string]string) string {
 <style>
 @page { size: letter; margin: 0; }
 html { font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1a1a1a; }
-body { margin: 0; background: #c5ccd4; font-size: 10pt; line-height: 1.4; }
+body { margin: 0; background: #c5ccd4; font-size: 10.5pt; line-height: 1.55; }
 .toolbar {
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 0.7em; flex-wrap: wrap;
@@ -104,15 +104,15 @@ body { margin: 0; background: #c5ccd4; font-size: 10pt; line-height: 1.4; }
   break-after: page;
 }
 .page:last-of-type { page-break-after: auto; break-after: auto; }
-h1 { font-size: 16pt; margin: 0 0 0.15em; letter-spacing: -0.01em; }
-h2 { font-size: 11.5pt; margin: 0 0 0.35em; }
-.meta { color: #5a6570; font-size: 8.5pt; margin: 0 0 0.55em; }
-.setup { margin: 0 0 0.45em; }
-.setup p { margin: 0 0 0.35em; }
+h1 { font-size: 16pt; margin: 0 0 0.25em; letter-spacing: -0.01em; }
+h2 { font-size: 11.5pt; margin: 0 0 0.45em; }
+.meta { color: #5a6570; font-size: 9pt; margin: 0 0 0.55em; line-height: 1.5; }
+.setup { margin: 0.15em 0 0.95em; }
+.setup p { margin: 0 0 0.75em; line-height: 1.55; }
 .setup p:last-child { margin-bottom: 0; }
 .note {
   background: #fff6e8; border: 1px solid #ead7b4; border-radius: 4px;
-  padding: 0.35em 0.55em; margin: 0 0 0.45em; font-size: 9pt;
+  padding: 0.5em 0.7em; margin: 0 0 0.85em; font-size: 9.5pt; line-height: 1.5;
 }
 code {
   font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, Menlo, monospace;
@@ -123,11 +123,11 @@ code {
   padding: 0.07em 0.32em;
   white-space: nowrap;
 }
-.engines { margin: 0.15em 0 0.4em; padding: 0; list-style: none; font-size: 9pt; color: #33404a; }
-.engines li { margin: 0.12em 0; }
-.chart { margin: 0.15em 0 0.25em; }
+.engines { margin: 0.35em 0 0.85em; padding: 0; list-style: none; font-size: 9.5pt; color: #33404a; }
+.engines li { margin: 0.28em 0; }
+.chart { margin: 0.4em 0 0.55em; }
 .chart svg { width: 100%; height: auto; display: block; }
-.caption { color: #5a6570; font-size: 8.5pt; margin: 0 0 0.35em; }
+.caption { color: #5a6570; font-size: 9pt; margin: 0 0 0.55em; line-height: 1.45; }
 table { border-collapse: collapse; width: 100%; font-size: 8pt; table-layout: fixed; }
 th, td { border-bottom: 1px solid #d8dee4; padding: 0.16em 0.22em; text-align: right; vertical-align: top; word-wrap: break-word; }
 th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
@@ -172,7 +172,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 <p>Both series run on the <strong>same Windows machine</strong>, sequentially: the next process starts only after the previous one has exited, so concurrency cannot spoil monitoring.</p>
 <p><strong>Excel</strong> — desktop Excel through COM (<code>Excel.Application</code> on an STA thread, alerts and window hidden, then open / save xlsx). Office.js tasks use a <strong>sideloaded Office.js add-in</strong>, not AppSource and not Office Scripts: the add-in <code>Excel.run</code>s the script, then the workbook is saved.</p>
 <p><strong>Mog</strong> — <code>save in.xlsx out.xlsx</code> or <code>run in.xlsx script.js out.xlsx</code>.</p>
-<p><strong>Wall time</strong> is that task’s elapsed time. <strong>Peak working set</strong> is sampled every 25&nbsp;ms (Windows <code>PeakWorkingSetSize</code> of <code>EXCEL.EXE</code> or the child; Unix <code>VmHWM</code>). Tasks differ a lot — there is no single average. Each mark below is one task.</p>
+<p><strong>Wall time</strong> is that task’s elapsed time. <strong>Peak working set</strong> is sampled every 25&nbsp;ms (Windows <code>PeakWorkingSetSize</code> of <code>EXCEL.EXE</code> or the child; Unix <code>VmHWM</code>).</p>
 </div>
 <ul class="engines">
 `)
@@ -265,7 +265,7 @@ func caseTablePages(doc BenchFile) string {
 		b.WriteString(`<section class="page">`)
 		if p == 0 {
 			b.WriteString("<h2>Per-task table</h2>")
-			b.WriteString(`<p class="caption">Each row is one task. Times are milliseconds; peaks are working set. The plots on page 1 are the overview — tasks are not averaged.</p>`)
+			b.WriteString(`<p class="caption">Each row is one task. Times are milliseconds; peaks are working set.</p>`)
 		} else {
 			fmt.Fprintf(&b, `<h2>Per-task table (%d/%d)</h2>`, p+1, pages)
 		}
@@ -281,12 +281,12 @@ func caseTablePages(doc BenchFile) string {
 }
 
 func buildBenchCharts(doc BenchFile) map[string]string {
-	names := make([]string, len(doc.Engines))
+	colors := make([]string, len(doc.Engines))
 	xs := make([][]float64, len(doc.Engines))
 	speed := make([][]float64, len(doc.Engines))
 	mem := make([][]float64, len(doc.Engines))
 	for i, eng := range doc.Engines {
-		names[i] = eng.ID
+		colors[i] = engineColor(eng)
 		for j, c := range doc.Cases {
 			r := c.Results[eng.ID]
 			if r.Error != "" || r.DurationMs <= 0 {
@@ -302,19 +302,29 @@ func buildBenchCharts(doc BenchFile) map[string]string {
 		}
 	}
 	return map[string]string{
-		"speed.svg": svgTaskMarks("Speed — one mark per task", "task index", "wall time", names, xs, speed, func(v float64) string {
+		"speed.svg": svgTaskMarks("Speed — one mark per task", "task index", "wall time", colors, xs, speed, func(v float64) string {
 			return formatMs(int64(math.Round(v)))
 		}),
-		"memory.svg": svgTaskMarks("Memory — one mark per task", "task index", "peak working set", names, xs, mem, func(v float64) string {
+		"memory.svg": svgTaskMarks("Memory — one mark per task", "task index", "peak working set", colors, xs, mem, func(v float64) string {
 			return formatBytes(int64(math.Round(v)))
 		}),
 	}
 }
 
-var chartColors = []string{"#1f4e79", "#c45911", "#548235", "#7030a0"}
+const (
+	excelColor = "#00B050" // saturated Excel green
+	mogColor   = "#FF3B00" // saturated orange-red
+)
 
-func svgTaskMarks(title, xlab, ylab string, series []string, xs, ys [][]float64, yfmt func(float64) string) string {
-	const W, H, lpad, rpad, tpad, bpad = 720.0, 250.0, 72.0, 14.0, 28.0, 40.0
+func engineColor(eng BenchEngine) string {
+	if eng.Kind == "excel-com" || strings.EqualFold(eng.ID, "excel") {
+		return excelColor
+	}
+	return mogColor
+}
+
+func svgTaskMarks(title, xlab, ylab string, colors []string, xs, ys [][]float64, yfmt func(float64) string) string {
+	const W, H, lpad, rpad, tpad, bpad = 720.0, 250.0, 72.0, 14.0, 28.0, 44.0
 	innerW := W - lpad - rpad
 	innerH := H - tpad - bpad
 	maxX := 1.0
@@ -384,16 +394,21 @@ func svgTaskMarks(title, xlab, ylab string, series []string, xs, ys [][]float64,
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" font-size="8.5" text-anchor="end" fill="#555">%s</text>`, lpad-5, y+3, html.EscapeString(label))
 	}
 
-	arm := 2.4
-	if nPts > 400 {
-		arm = 1.8
+	arm := 5.2
+	stroke := 2.6
+	dot := 2.4
+	switch {
+	case nPts > 400:
+		arm, stroke, dot = 3.6, 2.2, 1.8
+	case nPts > 80:
+		arm, stroke, dot = 4.4, 2.4, 2.1
 	}
-	for s := range series {
-		if s >= len(ys) {
+	for s := range ys {
+		if s >= len(colors) {
 			continue
 		}
-		color := chartColors[s%len(chartColors)]
-		b.WriteString(`<path fill="none" stroke="` + color + `" stroke-width="1.15" d="`)
+		color := colors[s]
+		b.WriteString(`<path fill="none" stroke="` + color + `" stroke-width="` + trimFloat(stroke) + `" stroke-linecap="square" d="`)
 		for i, v := range ys[s] {
 			if math.IsNaN(v) || v <= 0 || i >= len(xs[s]) {
 				continue
@@ -402,6 +417,13 @@ func svgTaskMarks(title, xlab, ylab string, series []string, xs, ys [][]float64,
 			fmt.Fprintf(&b, "M%.1f %.1f h%.1f M%.1f %.1f v%.1f ", x-arm, y, 2*arm, x, y-arm, 2*arm)
 		}
 		b.WriteString(`"/>`)
+		for i, v := range ys[s] {
+			if math.IsNaN(v) || v <= 0 || i >= len(xs[s]) {
+				continue
+			}
+			x, y := xAt(xs[s][i]), yAt(v)
+			fmt.Fprintf(&b, `<circle cx="%.1f" cy="%.1f" r="%.1f" fill="%s"/>`, x, y, dot, color)
+		}
 	}
 
 	fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" font-size="9" fill="#555">1</text>`, lpad, tpad+innerH+12)
@@ -412,14 +434,21 @@ func svgTaskMarks(title, xlab, ylab string, series []string, xs, ys [][]float64,
 		scale = "log"
 	}
 	fmt.Fprintf(&b, `<text x="12" y="%.1f" font-size="8.5" fill="#555" transform="rotate(-90 12 %.1f)">%s (%s)</text>`, tpad+innerH/2, tpad+innerH/2, html.EscapeString(ylab), scale)
-	for s, name := range series {
-		x := lpad + float64(s)*88
-		color := chartColors[s%len(chartColors)]
-		fmt.Fprintf(&b, `<path d="M%.1f %.1f h8 M%.1f %.1f v8" fill="none" stroke="%s" stroke-width="1.4"/>`, x, H-14, x+4, H-18, color)
-		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" font-size="9.5" fill="#333">%s</text>`, x+12, H-9, html.EscapeString(name))
+	// Always Excel then Mog so a Mog-only run still shows Excel's color.
+	for i, item := range []struct {
+		name, color string
+	}{{"Excel", excelColor}, {"Mog", mogColor}} {
+		x := lpad + float64(i)*110
+		fmt.Fprintf(&b, `<path d="M%.1f %.1f h10 M%.1f %.1f v10" fill="none" stroke="%s" stroke-width="2.6" stroke-linecap="square"/>`, x, H-16, x+5, H-21, item.color)
+		fmt.Fprintf(&b, `<circle cx="%.1f" cy="%.1f" r="2.4" fill="%s"/>`, x+5, H-16, item.color)
+		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" font-size="11" font-weight="600" fill="#1a1a1a">%s</text>`, x+16, H-11, html.EscapeString(item.name))
 	}
 	b.WriteString("</svg>")
 	return b.String()
+}
+
+func trimFloat(v float64) string {
+	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", v), "0"), ".")
 }
 
 func yTicks(minY, maxY float64, logY bool) []float64 {

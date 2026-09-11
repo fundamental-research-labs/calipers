@@ -78,8 +78,15 @@ func TestRunBenchReportMogOnlyFixture(t *testing.T) {
 	if !strings.Contains(html, "Excel COM series was not collected") {
 		t.Fatal("mog-only report must explain missing Excel")
 	}
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "speed.svg")))
+	speed := readFile(t, filepath.Join(outDir, "speed.svg"))
+	assertChartSVG(t, speed)
 	assertChartSVG(t, readFile(t, filepath.Join(outDir, "memory.svg")))
+	if !strings.Contains(speed, ">Excel</text>") || !strings.Contains(speed, ">Mog</text>") {
+		t.Fatal("legend must name Excel and Mog even when Excel has no points")
+	}
+	if !strings.Contains(speed, excelColor) || !strings.Contains(speed, mogColor) {
+		t.Fatalf("legend must use saturated Excel/Mog colors %s %s", excelColor, mogColor)
+	}
 }
 
 func assertBenchHTMLCommon(t *testing.T, html string) {
@@ -125,6 +132,9 @@ func assertBenchHTMLCommon(t *testing.T, html string) {
 	}
 	if strings.Contains(low, "median") {
 		t.Fatal("HTML must not summarize with a median across unlike tasks")
+	}
+	if strings.Contains(html, "no single average") || strings.Contains(html, "Each mark below is one task") {
+		t.Fatal("HTML must not apologize for the plot shape")
 	}
 	if strings.Contains(html, `type="module"`) || strings.Contains(html, "import ") {
 		t.Fatal("HTML must not use ES modules (file:// Print-to-PDF)")
