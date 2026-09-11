@@ -131,7 +131,7 @@ Excel uses the existing COM `Excel.Application` host (STA thread, `DisplayAlerts
 calipers bench --engine /path/to/mog --json bench.json --report ./report
 ```
 
-`bench-report` (also `--report DIR` on `bench`) writes `report.html` plus sibling SVG charts. The HTML is self-contained (inline SVG, no ES modules) so `file://` Print-to-PDF works. Pagination is **US Letter** (`@page { size: letter }` and explicit page breaks). Layout stays readable at ~1000 tests: setup, summary + suite aggregates, compact ratio/outlier charts (not 1000 bar charts), then a paginated per-case table.
+`bench-report` (also `--report DIR` on `bench`) writes `report.html` plus sibling SVG charts. The HTML is stacked **US Letter** sheets (8.5×11in) with an **Export as PDF** button (`window.print`). Two plots (speed, memory) show one mark per task — tasks are not averaged. A paginated table follows. `file://` works (inline SVG, no ES modules).
 
 This does not write `config.json` budgets (`measure-budgets`) and does not change `verify` PASS/FAIL.
 

@@ -206,7 +206,10 @@ func TestRunBenchMogOnlyWithReport(t *testing.T) {
 	if !strings.Contains(html, "Excel COM series was not collected") {
 		t.Fatalf("mog-only HTML must say Excel was not collected:\n%s", html[:800])
 	}
-	if _, err := os.Stat(filepath.Join(reportDir, "suite-duration.svg")); err != nil {
+	if _, err := os.Stat(filepath.Join(reportDir, "speed.svg")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(reportDir, "memory.svg")); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -121,10 +121,10 @@ Commands:
       --report DIR also writes report.html + SVG (same as bench-report).
 
   bench-report --json IN.json --out DIR
-      Turn bench JSON into a US Letter HTML page (Print-to-PDF) with
-      inline SVG charts: setup (Excel COM, sideloaded Office.js add-in,
-      sequential same-machine series, Mog save/run), summary, suite
-      aggregates, compact ratios, paginated per-case table (~1000 rows).
+      Turn bench JSON into stacked US Letter HTML pages (Export as PDF
+      / window.print) with two per-task plots (speed, memory) and a
+      paginated table. Setup: Excel COM, sideloaded Office.js add-in,
+      sequential same-machine series, Mog save/run.
 
   verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and

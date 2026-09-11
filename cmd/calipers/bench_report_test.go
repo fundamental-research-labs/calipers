@@ -17,7 +17,7 @@ func TestRunBenchReportHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	low := strings.ToLower(out)
-	for _, want := range []string{"us letter", "letter", "svg", "com", "office.js", "sequential", "save", "run"} {
+	for _, want := range []string{"us letter", "letter", "svg", "com", "office.js", "sequential", "save", "run", "export as pdf"} {
 		if !strings.Contains(low, want) {
 			t.Fatalf("bench-report help missing %q:\n%s", want, out)
 		}
@@ -32,8 +32,8 @@ func TestRunBenchReportFixture(t *testing.T) {
 	}
 	html := readFile(t, filepath.Join(outDir, benchReportHTMLName))
 	assertBenchHTMLCommon(t, html)
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "suite-duration.svg")))
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "duration-scatter.svg")))
+	assertChartSVG(t, readFile(t, filepath.Join(outDir, "speed.svg")))
+	assertChartSVG(t, readFile(t, filepath.Join(outDir, "memory.svg")))
 	if strings.Contains(html, "Excel COM series was not collected") {
 		t.Fatal("dual-engine fixture should include Excel COM")
 	}
@@ -47,23 +47,24 @@ func TestRunBenchReportThousandCases(t *testing.T) {
 	}
 	html := readFile(t, filepath.Join(outDir, benchReportHTMLName))
 	assertBenchHTMLCommon(t, html)
-	nSheets := strings.Count(html, `class="sheet"`)
-	if nSheets < 20 {
-		t.Fatalf("1000-row table must paginate US Letter; sheet count = %d", nSheets)
+	nPages := strings.Count(html, `class="page"`)
+	if nPages < 20 {
+		t.Fatalf("1000-row table must paginate US Letter; page count = %d", nPages)
 	}
 	nSVG := strings.Count(html, "<svg")
-	if nSVG == 0 {
-		t.Fatal("HTML must inline SVG charts")
-	}
-	if nSVG > 12 {
-		t.Fatalf("must not emit a bar chart per case; svg count = %d", nSVG)
+	if nSVG != 2 {
+		t.Fatalf("want exactly two per-task plots, svg count = %d", nSVG)
 	}
 	if strings.Count(html, "<tr") < 1000 {
 		t.Fatalf("compact table must list the cases; tr count = %d", strings.Count(html, "<tr"))
 	}
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "suite-duration.svg")))
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "duration-ratio.svg")))
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "duration-scatter.svg")))
+	speed := readFile(t, filepath.Join(outDir, "speed.svg"))
+	mem := readFile(t, filepath.Join(outDir, "memory.svg"))
+	assertChartSVG(t, speed)
+	assertChartSVG(t, mem)
+	if strings.Count(speed, "M") < 500 {
+		t.Fatalf("speed plot must have one mark per task, path commands = %d", strings.Count(speed, "M"))
+	}
 }
 
 func TestRunBenchReportMogOnlyFixture(t *testing.T) {
@@ -77,7 +78,8 @@ func TestRunBenchReportMogOnlyFixture(t *testing.T) {
 	if !strings.Contains(html, "Excel COM series was not collected") {
 		t.Fatal("mog-only report must explain missing Excel")
 	}
-	assertChartSVG(t, readFile(t, filepath.Join(outDir, "duration-hist.svg")))
+	assertChartSVG(t, readFile(t, filepath.Join(outDir, "speed.svg")))
+	assertChartSVG(t, readFile(t, filepath.Join(outDir, "memory.svg")))
 }
 
 func assertBenchHTMLCommon(t *testing.T, html string) {
@@ -88,8 +90,12 @@ func assertBenchHTMLCommon(t *testing.T, html string) {
 	low := strings.ToLower(html)
 	for _, want := range []string{
 		"@page",
-		"letter",
+		"8.5in",
+		"11in",
 		"page-break",
+		"Export as PDF",
+		"window.print",
+		"Excel engine verifier",
 		"Excel.Application",
 		"COM",
 		"sideloaded",
@@ -114,6 +120,12 @@ func assertBenchHTMLCommon(t *testing.T, html string) {
 			t.Fatalf("HTML missing %q", want)
 		}
 	}
+	if strings.Contains(low, "calipers") {
+		t.Fatal("HTML must not mention calipers")
+	}
+	if strings.Contains(low, "median") {
+		t.Fatal("HTML must not summarize with a median across unlike tasks")
+	}
 	if strings.Contains(html, `type="module"`) || strings.Contains(html, "import ") {
 		t.Fatal("HTML must not use ES modules (file:// Print-to-PDF)")
 	}
@@ -124,7 +136,7 @@ func assertChartSVG(t *testing.T, svg string) {
 	if !strings.Contains(svg, "<svg") {
 		t.Fatal("not an SVG")
 	}
-	if !strings.Contains(svg, "<rect") && !strings.Contains(svg, "<circle") && !strings.Contains(svg, "<line") {
+	if !strings.Contains(svg, "<path") && !strings.Contains(svg, "<circle") && !strings.Contains(svg, "<line") {
 		t.Fatalf("SVG has no axes/series/points:\n%s", svg[:min(len(svg), 400)])
 	}
 	if !strings.Contains(svg, "<text") {
