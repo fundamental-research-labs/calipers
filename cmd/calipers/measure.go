@@ -244,6 +244,9 @@ func measureChild(bin string, args []string) (memSample, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	pid := cmd.Process.Pid
+	if n := processPeakBytes(pid); n > peak.Load() {
+		peak.Store(n)
+	}
 	go func() {
 		defer close(done)
 		tick := time.NewTicker(measureSampleEvery)

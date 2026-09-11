@@ -5,6 +5,8 @@
 //	calipers excel-run <input.xlsx> <script.js> <output.xlsx>
 //	calipers excel-run-pass [cases-dir]
 //	calipers measure-budgets [--engine excel|PATH]
+//	calipers bench --engine excel --engine PATH --json OUT.json
+//	calipers bench-report --json IN.json --out DIR
 //	calipers verify --engine <path|excel> [--suite NAME] [--case ID]...
 //	calipers version
 package main
@@ -68,6 +70,10 @@ func run(args []string) error {
 		return excelRunPass(root)
 	case "measure-budgets":
 		return measureBudgetsCmd(args[1:])
+	case "bench":
+		return benchCmd(args[1:])
+	case "bench-report":
+		return benchReportCmd(args[1:])
 	case "verify":
 		return verifyCmd(args[1:])
 	case "version":
@@ -104,6 +110,21 @@ Commands:
       maxPeakMemoryBytes / maxDurationMs into that case's config.json
       (other keys are kept). Missing config is valid. Requires Windows
       + Excel when --engine excel (the default) and there is work to do.
+
+  bench --engine excel --engine PATH --json OUT.json [--report DIR] [--cases-dir DIR] [--suite NAME] [--case ID]...
+      Sequential dual-engine (or Mog-only) series over the verify
+      corpus: wall time and peak working set per case×engine, one JSON.
+      Repeat --engine; typical Windows run is excel then the Mog binary.
+      --engine PATH alone is the Linux / HTML-preview path (no COM).
+      Off Windows, --engine excel errors with the Excel COM message.
+      One task at a time so concurrency does not spoil monitoring.
+      --report DIR also writes report.html + SVG (same as bench-report).
+
+  bench-report --json IN.json --out DIR
+      Turn bench JSON into a US Letter HTML page (Print-to-PDF) with
+      inline SVG charts: setup (Excel COM, sideloaded Office.js add-in,
+      sequential same-machine series, Mog save/run), summary, suite
+      aggregates, compact ratios, paginated per-case table (~1000 rows).
 
   verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and

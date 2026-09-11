@@ -21,7 +21,7 @@ Off Windows, those commands exit with:
 calipers: excel-save requires Windows + Excel (COM)
 ```
 
-`version`, `verify`, and `-h` / `--help` work on any OS. `verify` requires `--engine` (a binary path or `excel`). `verify --engine excel` needs Windows + Excel. `verify --engine <bin>` execs a caller-supplied binary (`save` / `run`).
+`version`, `verify`, `bench` (with a binary `--engine`, no Excel), `bench-report`, and `-h` / `--help` work on any OS. `verify` requires `--engine` (a binary path or `excel`). `verify --engine excel` needs Windows + Excel. `verify --engine <bin>` execs a caller-supplied binary (`save` / `run`). `bench --engine excel` is Windows-only (COM); `bench --engine <bin>` is the Mog-only / HTML-preview path.
 
 ## Build
 
@@ -49,6 +49,13 @@ calipers excel-run-pass [cases-dir]
 
 # Optional peak-memory / duration budgets (Windows)
 calipers measure-budgets [--engine excel|PATH] [--margin 1.5] [--suite NAME]
+
+# Sequential Excel+Mog (or Mog-only) speed/memory series → JSON
+calipers bench --engine excel --engine /path/to/mog --json bench.json
+calipers bench --engine /path/to/mog --json bench.json --report ./report
+
+# JSON → US Letter HTML + SVG (browser Print-to-PDF)
+calipers bench-report --json bench.json --out ./report
 
 # Engine vs committed Excel goldens (binary host or Excel)
 calipers verify --engine /path/to/engine
@@ -84,6 +91,13 @@ calipers excel-run-pass verification/cases/officejs
 # Optional peak-memory / duration budgets (Windows)
 calipers measure-budgets --engine excel --suite officejs
 
+# Speed/memory vs Excel (Windows: both series, one task at a time)
+calipers bench --engine excel --engine /path/to/mog --json bench.json --report ./report
+
+# Mog-only preview (any OS; inspect HTML before a Windows Excel run)
+calipers bench --engine /path/to/mog --json bench.json --report ./report
+calipers bench-report --json bench.json --out ./report
+
 # External engine binary (argv: save <in> <out> / run <in> <script.js> <out>)
 calipers verify --engine /path/to/engine
 calipers verify --engine /path/to/engine --suite roundtrip
@@ -98,6 +112,28 @@ A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel v
 CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
 
 `verify` prints the selected calculation policy. By default it leaves each host's policy unchanged. `--recalculate` passes `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>` to an external engine that supports this contract. The flag is rejected for the Excel host, whose calculation is not explicitly controlled. Recalculation does not make random, time-dependent, or environment-dependent results and their dependents equal previously captured goldens; those require controlled assertions.
+
+## Bench (Excel vs Mog speed and memory)
+
+`calipers bench` walks the same committed-golden corpus as `verify`, **one case at a time**, and writes wall time plus peak working set for every case×engine into one JSON file. A case error is recorded and the series continues.
+
+Typical Windows run (both series on the same machine so concurrency cannot spoil monitoring):
+
+```bash
+calipers bench --engine excel --engine /path/to/mog --json bench.json --report ./report
+```
+
+Excel uses the existing COM `Excel.Application` host (STA thread, `DisplayAlerts`/`Visible` off). Office.js cases use the **sideloaded Office.js add-in** — not AppSource, not Office Scripts — the same path as `excel-run`. Mog is the caller-supplied `save` / `run` binary (same argv as `verify --engine PATH`). Peak memory is Windows `PeakWorkingSetSize` of `EXCEL.EXE` / the child, or Unix `VmHWM`, sampled every 25 ms.
+
+**Mog-only (Linux / this environment):** omit `--engine excel` so you can inspect the JSON and HTML before a colleague runs the Excel COM series on Windows:
+
+```bash
+calipers bench --engine /path/to/mog --json bench.json --report ./report
+```
+
+`bench-report` (also `--report DIR` on `bench`) writes `report.html` plus sibling SVG charts. The HTML is self-contained (inline SVG, no ES modules) so `file://` Print-to-PDF works. Pagination is **US Letter** (`@page { size: letter }` and explicit page breaks). Layout stays readable at ~1000 tests: setup, summary + suite aggregates, compact ratio/outlier charts (not 1000 bar charts), then a paginated per-case table.
+
+This does not write `config.json` budgets (`measure-budgets`) and does not change `verify` PASS/FAIL.
 
 ## Cases
 

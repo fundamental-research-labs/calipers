@@ -44,6 +44,12 @@ func TestRunHelp(t *testing.T) {
 	if !bytes.Contains(out, []byte("verify")) {
 		t.Fatalf("help must list verify:\n%s", out)
 	}
+	if !bytes.Contains(out, []byte("bench")) || !bytes.Contains(out, []byte("bench-report")) {
+		t.Fatalf("help must list bench and bench-report:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("US Letter")) && !bytes.Contains(out, []byte("letter")) {
+		t.Fatalf("help must mention US Letter pagination:\n%s", out)
+	}
 	if !bytes.Contains(out, []byte("--suite")) || !bytes.Contains(out, []byte("--case")) {
 		t.Fatalf("help must list --suite and --case:\n%s", out)
 	}
