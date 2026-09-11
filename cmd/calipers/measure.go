@@ -31,8 +31,10 @@ const (
   Values are the measured quantity times --margin, plus a small floor, so
   later engine runs can flag regressions without matching Excel exactly.
 
-  Missing config.json is valid (no budget). This command fills those files.
-  --force overwrites configs that already exist.
+  Missing config.json is valid (no budget). This command fills those files
+  by merging the two budget keys into the existing JSON object (compare
+  exceptions and other keys are kept). --force rewrites budgets that
+  already exist.
 
   --engine excel    Excel COM host (Windows + Microsoft Excel). Default.
   --engine PATH     external binary (same argv as verify: save / run).

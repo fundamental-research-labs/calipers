@@ -169,6 +169,107 @@ func TestVerifyCellValueFailsCompare(t *testing.T) {
 	}
 }
 
+func TestVerifyCompareExceptionPassesQuirk(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	dir := filepath.Join(root, "volatile")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.InitFile), miniXLSXFormula("NOW()", "1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.GoldenFile), miniXLSXFormula("NOW()", "2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, filepath.Join(root, cases.ConfigFile), `{"compare":{"ignore":["volatileValues"]}}`)
+	var buf bytes.Buffer
+	err := runVerify(&fakeEngine{}, root, []string{"volatile"}, outDir, &buf)
+	if err != nil {
+		t.Fatalf("quirk-only mismatch with exception must PASS: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "PASS") {
+		t.Fatalf("output = %s", buf.String())
+	}
+}
+
+func TestVerifyCompareExceptionStillFailsUnrelated(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	dir := filepath.Join(root, "volatile")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.InitFile), miniXLSXTwo("hello", "NOW()", "1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.GoldenFile), miniXLSXTwo("world", "NOW()", "2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, filepath.Join(root, cases.ConfigFile), `{"compare":{"ignore":["volatileValues"]}}`)
+	var buf bytes.Buffer
+	err := runVerify(&fakeEngine{}, root, []string{"volatile"}, outDir, &buf)
+	if err == nil {
+		t.Fatal("unrelated values mismatch must still FAIL")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "FAIL") || !strings.Contains(out, "values: Sheet1!A1") {
+		t.Fatalf("output = %s", out)
+	}
+	if strings.Contains(out, "ALLOW") {
+		t.Fatalf("must not whole-case ALLOW: %s", out)
+	}
+}
+
+func TestVerifyEngineErrorNotMaskedByCompareException(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	writeVerifyCase(t, root, "boom", "hello", nil)
+	writeJSON(t, filepath.Join(root, cases.ConfigFile), `{"compare":{"ignore":["volatileValues"]}}`)
+	var buf bytes.Buffer
+	err := runVerify(errEngine{err: io.ErrUnexpectedEOF}, root, []string{"boom"}, outDir, &buf)
+	if err == nil {
+		t.Fatal("engine error must still fail the walk")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ERROR") {
+		t.Fatalf("output = %s", out)
+	}
+	if strings.Contains(out, "PASS") && strings.Contains(out, "boom PASS") {
+		t.Fatalf("engine error must not PASS: %s", out)
+	}
+}
+
+func TestVerifyCellRangeConfig(t *testing.T) {
+	root, outDir := setupVerifyDir(t)
+	dir := filepath.Join(root, "rand")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.InitFile), miniXLSXNumber("0.4"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, cases.GoldenFile), miniXLSXNumber("0.9"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, filepath.Join(dir, cases.ConfigFile), `{"compare":{"cells":{"Sheet1!C4":{"min":0,"max":1}}}}`)
+	var buf bytes.Buffer
+	err := runVerify(&fakeEngine{}, root, []string{"rand"}, outDir, &buf)
+	if err != nil {
+		t.Fatalf("in-range cell must PASS: %v\n%s", err, buf.String())
+	}
+}
+
+func writeJSON(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type errEngine struct{ err error }
+
+func (e errEngine) OpenSave(in, out string) error { return e.err }
+
+func (e errEngine) RunScript(in, script, out string) error { return e.err }
+
 func TestVerifySemanticPassDespitePackageNoise(t *testing.T) {
 	root, outDir := setupVerifyDir(t)
 	dir := filepath.Join(root, "float")
@@ -620,6 +721,12 @@ func TestRunVerifyHelpListsSuiteAndCase(t *testing.T) {
 	if bytes.Contains(out, []byte("MOG_BIN")) || bytes.Contains(out, []byte("vendor/mog")) {
 		t.Fatalf("verify help must not name Mog env/vendor as a default engine:\n%s", out)
 	}
+	if bytes.Contains(out, []byte(".calipers.json")) || bytes.Contains(out, []byte("verify.allow")) {
+		t.Fatalf("verify help must not mention .calipers.json or verify.allow:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("config.json")) {
+		t.Fatalf("verify help must mention hierarchical config.json:\n%s", out)
+	}
 }
 
 func stubBinaryHost(t *testing.T, fake engine) (restore func()) {
@@ -719,6 +826,14 @@ func miniXLSX(value string) []byte {
 
 func miniXLSXNumber(v string) []byte {
 	return miniXLSXParts(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="4"><c r="C4"><v>` + v + `</v></c></row></sheetData></worksheet>`)
+}
+
+func miniXLSXFormula(formula, value string) []byte {
+	return miniXLSXParts(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><f>` + formula + `</f><v>` + value + `</v></c></row></sheetData></worksheet>`)
+}
+
+func miniXLSXTwo(a1, formula, value string) []byte {
+	return miniXLSXParts(`<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>` + a1 + `</t></is></c><c r="B1"><f>` + formula + `</f><v>` + value + `</v></c></row></sheetData></worksheet>`)
 }
 
 func miniXLSXParts(sheet string) []byte {

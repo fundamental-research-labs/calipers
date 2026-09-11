@@ -3,6 +3,7 @@ package cases
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/fundamental-research-labs/calipers/internal/excel"
 	"github.com/fundamental-research-labs/calipers/internal/golden"
+	"github.com/fundamental-research-labs/calipers/internal/xlsxmodel"
 )
 
 func TestLoadMissingScriptIsLoadSave(t *testing.T) {
@@ -173,20 +175,204 @@ func TestLoadConfigNegativeRejected(t *testing.T) {
 }
 
 func TestWriteBudgetRoundTrip(t *testing.T) {
-	dir := t.TempDir()
+	root := t.TempDir()
+	writeCase(t, root, "one", "pk", nil)
+	dir := filepath.Join(root, "one")
 	want := Budget{MaxPeakMemoryBytes: 1000, MaxDurationMs: 20}
 	if err := WriteBudget(dir, want); err != nil {
 		t.Fatal(err)
 	}
-	got, path, err := loadBudget(dir)
+	got, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != filepath.Join(dir, ConfigFile) {
-		t.Fatalf("path=%q", path)
+	if len(got) != 1 {
+		t.Fatalf("len=%d", len(got))
 	}
-	if got == nil || *got != want {
-		t.Fatalf("got %+v, want %+v", got, want)
+	if got[0].ConfigPath != filepath.Join(dir, ConfigFile) {
+		t.Fatalf("path=%q", got[0].ConfigPath)
+	}
+	if got[0].Budget == nil || *got[0].Budget != want {
+		t.Fatalf("got %+v, want %+v", got[0].Budget, want)
+	}
+}
+
+func TestWriteBudgetPreservesExtraKeys(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "one", "pk", nil)
+	dir := filepath.Join(root, "one")
+	body := `{
+  "compare": {"ignore": ["volatileValues"]},
+  "extra": true,
+  "maxDurationMs": 10
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, ConfigFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteBudget(dir, Budget{MaxPeakMemoryBytes: 99, MaxDurationMs: 20}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, ConfigFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["extra"] != true {
+		t.Fatalf("extra key lost: %s", data)
+	}
+	cmp, ok := raw["compare"].(map[string]any)
+	if !ok {
+		t.Fatalf("compare lost: %s", data)
+	}
+	ignore, _ := cmp["ignore"].([]any)
+	if len(ignore) != 1 || ignore[0] != "volatileValues" {
+		t.Fatalf("compare.ignore = %#v", cmp["ignore"])
+	}
+	if raw["maxPeakMemoryBytes"] != float64(99) || raw["maxDurationMs"] != float64(20) {
+		t.Fatalf("budgets = %s", data)
+	}
+}
+
+func TestConfigCascade(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, "officejs"), "fill_solid", "pk", nil)
+	writeCase(t, filepath.Join(root, "officejs"), "other", "pk", nil)
+	writeCase(t, filepath.Join(root, "roundtrip"), "plain", "pk", nil)
+	writeJSON(t, filepath.Join(root, ConfigFile), `{
+  "maxDurationMs": 30000,
+  "compare": {"ignore": ["volatileValues"], "cells": {"Sheet1!A1": {"min": 0, "max": 10}}}
+}`)
+	writeJSON(t, filepath.Join(root, "officejs", ConfigFile), `{"maxDurationMs": 8000}`)
+	writeJSON(t, filepath.Join(root, "officejs", "fill_solid", ConfigFile), `{
+  "maxDurationMs": 20000,
+  "compare": {"ignore": ["fillBgColor"], "cells": {"Sheet1!A1": {"min": 1, "max": 2}}}
+}`)
+
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Case{}
+	for _, c := range got {
+		byID[c.ID] = c
+	}
+
+	fill := byID["officejs/fill_solid"]
+	if fill.Budget == nil || fill.Budget.MaxDurationMs != 20000 || fill.Budget.MaxPeakMemoryBytes != 0 {
+		t.Fatalf("fill_solid budget = %+v", fill.Budget)
+	}
+	if fill.ConfigPath != filepath.Join(root, "officejs", "fill_solid", ConfigFile) {
+		t.Fatalf("fill_solid ConfigPath = %q", fill.ConfigPath)
+	}
+	if !hasIgnore(fill.Compare.Ignore, "volatileValues") || !hasIgnore(fill.Compare.Ignore, "fillBgColor") {
+		t.Fatalf("fill_solid ignore = %v, want union", fill.Compare.Ignore)
+	}
+	if band := fill.Compare.Cells["Sheet1!A1"]; band.Min == nil || *band.Min != 1 || band.Max == nil || *band.Max != 2 {
+		t.Fatalf("fill_solid cell override = %+v", fill.Compare.Cells)
+	}
+
+	other := byID["officejs/other"]
+	if other.ConfigPath != "" {
+		t.Fatalf("other ConfigPath = %q, want empty (no local file)", other.ConfigPath)
+	}
+	if other.Budget == nil || other.Budget.MaxDurationMs != 8000 {
+		t.Fatalf("other must inherit suite duration, got %+v", other.Budget)
+	}
+	if !hasIgnore(other.Compare.Ignore, "volatileValues") || hasIgnore(other.Compare.Ignore, "fillBgColor") {
+		t.Fatalf("other ignore = %v, want parent volatileValues only", other.Compare.Ignore)
+	}
+	if band := other.Compare.Cells["Sheet1!A1"]; band.Min == nil || *band.Min != 0 || band.Max == nil || *band.Max != 10 {
+		t.Fatalf("other must inherit parent cell range, got %+v", other.Compare.Cells)
+	}
+
+	plain := byID["roundtrip/plain"]
+	if plain.Budget == nil || plain.Budget.MaxDurationMs != 30000 {
+		t.Fatalf("plain must inherit corpus duration, got %+v", plain.Budget)
+	}
+	if !hasIgnore(plain.Compare.Ignore, "volatileValues") {
+		t.Fatalf("plain ignore = %v", plain.Compare.Ignore)
+	}
+}
+
+func TestConfigMissingFileIsNoop(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, "officejs"), "x", "pk", nil)
+	writeJSON(t, filepath.Join(root, ConfigFile), `{"maxPeakMemoryBytes": 100}`)
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Budget == nil || got[0].Budget.MaxPeakMemoryBytes != 100 {
+		t.Fatalf("missing suite/case config must keep parent, got %+v", got)
+	}
+}
+
+func TestConfigUnknownIgnore(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, root, "one", "pk", nil)
+	writeJSON(t, filepath.Join(root, "one", ConfigFile), `{"compare":{"ignore":["nope"]}}`)
+	_, err := Load(root)
+	if err == nil || !strings.Contains(err.Error(), "unknown compare.ignore") {
+		t.Fatalf("error = %v, want unknown compare.ignore", err)
+	}
+}
+
+func writeJSON(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func hasIgnore(got []string, name string) bool {
+	for _, s := range got {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCommittedCompareExceptions(t *testing.T) {
+	all, err := Load(repoCasesDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]Case{}
+	for _, c := range all {
+		byID[c.ID] = c
+	}
+	want := map[string][]string{
+		"officejs/fill_solid":               {xlsxmodel.IgnoreFillBgColor},
+		"officejs/spill_take_drop":          {xlsxmodel.IgnoreAnchorArraySpelling},
+		"roundtrip/formula_stress_test":     {xlsxmodel.IgnoreVolatileValues},
+		"roundtrip/formulas_datetime":       {xlsxmodel.IgnoreVolatileValues},
+		"roundtrip/formulas_dynamic_arrays": {xlsxmodel.IgnoreVolatileValues},
+		"roundtrip/formulas_information":    {xlsxmodel.IgnoreVolatileValues, xlsxmodel.IgnoreCellFilenamePrefix},
+		"roundtrip/simple":                  {xlsxmodel.IgnoreVolatileValues},
+	}
+	for id, tokens := range want {
+		c, ok := byID[id]
+		if !ok {
+			t.Errorf("missing case %s", id)
+			continue
+		}
+		for _, tok := range tokens {
+			if !hasIgnore(c.Compare.Ignore, tok) {
+				t.Errorf("%s ignore = %v, want %s", id, c.Compare.Ignore, tok)
+			}
+		}
+	}
+	simple := byID["roundtrip/simple"]
+	if hasIgnore(simple.Compare.Ignore, xlsxmodel.IgnoreFillBgColor) {
+		t.Errorf("simple must not inherit fillBgColor, got %v", simple.Compare.Ignore)
 	}
 }
 

@@ -31,7 +31,7 @@ FAIL lines are semantic diffs (`values: Sheet1!C1 expected 15 got 0`), not ZIP-p
 
 A package match does not prove that formulas were evaluated. By default, `verify` uses the host's existing `save`/`run` behavior. Opt-in `verify --engine PATH --recalculate` requests full recalculation before export by passing `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>`. The selected external engine must support this flag. The selected policy is printed before verification. Engines retain their original argv when the flag is absent. `--engine` is required (binary path or `excel`).
 
-`--recalculate` is rejected with the Excel host, which opens and saves without explicitly controlling calculation. Neither policy controls time, randomness, or environment-dependent results. Volatile formulas and their transitive dependents still require controlled assertions; fresh recalculation alone cannot match their previously captured golden caches. Goldens remain unchanged by `verify`.
+`--recalculate` is rejected with the Excel host, which opens and saves without explicitly controlling calculation. Neither policy controls time, randomness, or environment-dependent results. Volatile formulas and their transitive dependents still require controlled assertions; fresh recalculation alone cannot match their previously captured golden caches. Declare those as narrow `compare` exceptions on hierarchical `config.json` (cases → suite → case) so cached NOW/TODAY/RAND values are skipped while formulas and every other axis still gate. Goldens remain unchanged by `verify`.
 
 Always ignore: ZIP mtimes, `docProps` creator/dates, `Application`/`AppVersion`, `workbookPr@calcId`, `xl/calcChain.xml`, printer settings.
 
