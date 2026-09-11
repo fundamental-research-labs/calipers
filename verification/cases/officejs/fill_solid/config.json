@@ -1,4 +1,7 @@
 {
   "maxPeakMemoryBytes": 453175296,
-  "maxDurationMs": 3279
+  "maxDurationMs": 3279,
+  "compare": {
+    "ignore": ["fillBgColor"]
+  }
 }

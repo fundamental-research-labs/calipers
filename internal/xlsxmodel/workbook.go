@@ -89,7 +89,7 @@ type Result struct {
 }
 
 // CompareFiles parses two xlsx files and diffs the semantic model.
-func CompareFiles(exportPath, goldenPath string) (Result, error) {
+func CompareFiles(exportPath, goldenPath string, opts ...Options) (Result, error) {
 	export, err := os.ReadFile(exportPath)
 	if err != nil {
 		return Result{}, fmt.Errorf("export: %w", err)
@@ -98,11 +98,11 @@ func CompareFiles(exportPath, goldenPath string) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("golden: %w", err)
 	}
-	return Compare(export, golden)
+	return Compare(export, golden, opts...)
 }
 
 // Compare parses two xlsx blobs and diffs the semantic model.
-func Compare(export, golden []byte) (Result, error) {
+func Compare(export, golden []byte, opts ...Options) (Result, error) {
 	a, err := Parse(export)
 	if err != nil {
 		return Result{}, fmt.Errorf("export xlsx: %w", err)
@@ -111,7 +111,7 @@ func Compare(export, golden []byte) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("golden xlsx: %w", err)
 	}
-	return DiffWorkbooks(a, b), nil
+	return DiffWorkbooks(a, b, opts...), nil
 }
 
 // Parse reads an xlsx archive into sheets, A1 values/types/formulas/styles, and date1904.
@@ -168,8 +168,24 @@ func Parse(data []byte) (Workbook, error) {
 	return wb, nil
 }
 
+type compareCtx struct {
+	opt     Options
+	skipVal map[string]bool
+}
+
 // DiffWorkbooks compares the semantic model.
-func DiffWorkbooks(a, b Workbook) Result {
+func DiffWorkbooks(a, b Workbook, opts ...Options) Result {
+	var opt Options
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	ctx := compareCtx{opt: opt}
+	if opt.has(IgnoreVolatileValues) {
+		ctx.skipVal = volatileLocs(a)
+		for loc := range volatileLocs(b) {
+			ctx.skipVal[loc] = true
+		}
+	}
 	var diffs []Diff
 	if a.Date1904 != b.Date1904 {
 		diffs = append(diffs, Diff{
@@ -190,7 +206,7 @@ func DiffWorkbooks(a, b Workbook) Result {
 				diffs = append(diffs, missingDiffs(loc, av, "present in export, missing in golden")...)
 				continue
 			}
-			diffs = append(diffs, cellDiffs(loc, av, bv)...)
+			diffs = append(diffs, cellDiffs(loc, av, bv, ctx)...)
 		}
 	}
 	for sheet, cells := range b.Cells {
@@ -228,21 +244,25 @@ func missingDiffs(loc string, v Value, detail string) []Diff {
 	return diffs
 }
 
-func cellDiffs(loc string, a, b Value) []Diff {
+func cellDiffs(loc string, a, b Value, ctx compareCtx) []Diff {
 	var diffs []Diff
 	if a.Type != b.Type {
 		diffs = append(diffs, Diff{Axis: "types", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.Type, a.Type)})
-	} else if d := valueDiff(loc, a, b); d != nil {
+	} else if d := valueDiff(loc, a, b, ctx); d != nil {
 		diffs = append(diffs, *d)
 	}
-	if a.Formula != b.Formula || a.FKind != b.FKind || a.FRef != b.FRef {
+	if formulaCmpKey(a, ctx.opt) != formulaCmpKey(b, ctx.opt) {
 		diffs = append(diffs, Diff{Axis: "formulas", Location: loc, Detail: fmt.Sprintf("expected %q got %q", formulaKey(b), formulaKey(a))})
 	}
-	diffs = append(diffs, styleDiffs(loc, a.Style, b.Style)...)
+	diffs = append(diffs, styleDiffs(loc, a.Style, b.Style, ctx.opt)...)
 	return diffs
 }
 
-func styleDiffs(loc string, a, b Style) []Diff {
+func styleDiffs(loc string, a, b Style, opt Options) []Diff {
+	if opt.has(IgnoreFillBgColor) {
+		a.Fill = normalizeFillBg(a.Fill)
+		b.Fill = normalizeFillBg(b.Fill)
+	}
 	if a == b {
 		return nil
 	}
@@ -376,7 +396,16 @@ func formulaKey(v Value) string {
 	return v.FKind + ":" + v.FRef + ":" + v.Formula
 }
 
-func valueDiff(loc string, a, b Value) *Diff {
+func valueDiff(loc string, a, b Value, ctx compareCtx) *Diff {
+	if band, ok := ctx.opt.Cells[loc]; ok && a.Type == TypeNumber && band.Min != nil && band.Max != nil {
+		if a.F < *band.Min || a.F > *band.Max {
+			return &Diff{Axis: "values", Location: loc, Detail: fmt.Sprintf("got %s, want between %g and %g", a.S, *band.Min, *band.Max)}
+		}
+		return nil
+	}
+	if ctx.skipVal[loc] {
+		return nil
+	}
 	if a.Type == TypeNumber && b.Type == TypeNumber {
 		if math.Float64bits(a.F) == math.Float64bits(b.F) {
 			return nil
@@ -391,6 +420,11 @@ func valueDiff(loc string, a, b Value) *Diff {
 	}
 	if a.S == b.S {
 		return nil
+	}
+	if ctx.opt.has(IgnoreCellFilenamePrefix) && (isCellFilenameFormula(a.Formula) || isCellFilenameFormula(b.Formula)) {
+		if filenameSuffix(a.S) == filenameSuffix(b.S) {
+			return nil
+		}
 	}
 	return &Diff{Axis: "values", Location: loc, Detail: fmt.Sprintf("expected %q got %q", b.S, a.S)}
 }

@@ -7,10 +7,13 @@
 // Suite names are the directory names on disk; the loader does not hardcode
 // them. Directories whose names start with '_' are not suites: they stay on
 // disk but are not loaded. A case directory contains a required init.xlsx,
-// an optional script.js, an optional config.json (peak-memory / duration
-// budgets), and a dedicated golden.xlsx destination (not mixed into a flat
-// init dump). A missing or empty script means load+save only: skip script
-// execution. Missing config.json is valid (no budget). A directory is a
+// an optional script.js, optional config.json (budgets and compare
+// exceptions), and a dedicated golden.xlsx destination (not mixed into a
+// flat init dump). A missing or empty script means load+save only: skip
+// script execution. config.json may live at the cases root, a suite
+// directory, and the case directory; child scalar fields override the
+// parent, compare exceptions union, and a missing file is a no-op.
+// Missing config is valid (no budget / no exceptions). A directory is a
 // case only when it contains init.xlsx.
 //
 // Load also accepts a flat directory of cases (one suite, used by tests
@@ -19,12 +22,13 @@ package cases
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/fundamental-research-labs/calipers/internal/xlsxmodel"
 )
 
 // DirName is the in-repo corpus path relative to the module root.
@@ -37,8 +41,8 @@ const (
 	ConfigFile = "config.json"
 )
 
-// Budget is an optional per-case cap written next to init/script/golden.
-// Missing config.json is valid: there is no cap. Zero fields mean "unset".
+// Budget is an optional cap. Zero fields mean "unset". Resolved from the
+// config.json cascade (cases root → suite → case).
 type Budget struct {
 	MaxPeakMemoryBytes int64 `json:"maxPeakMemoryBytes,omitempty"`
 	MaxDurationMs      int64 `json:"maxDurationMs,omitempty"`
@@ -51,10 +55,11 @@ type Case struct {
 	Suite      string // suite directory, e.g. "roundtrip"; empty in a flat layout
 	Dir        string
 	InitPath   string
-	ScriptPath string  // non-empty only when a script should run
-	GoldenPath string  // destination; may not exist yet
-	ConfigPath string  // non-empty when config.json exists on disk
-	Budget     *Budget // nil when config.json is absent
+	ScriptPath string            // non-empty only when a script should run
+	GoldenPath string            // destination; may not exist yet
+	ConfigPath string            // local config.json if present
+	Budget     *Budget           // resolved; nil when no budget at any level
+	Compare    xlsxmodel.Options // resolved compare exceptions + cell ranges
 }
 
 // RunScript reports whether this case has a non-empty Office.js file to execute.
@@ -117,7 +122,7 @@ func LoadCorpus(root string) (Corpus, error) {
 	}
 
 	if hasCases {
-		cs, err := loadSuite(root, "")
+		cs, err := loadSuite(root, root, "")
 		if err != nil {
 			return Corpus{}, err
 		}
@@ -127,7 +132,7 @@ func LoadCorpus(root string) (Corpus, error) {
 	sort.Strings(suiteDirs)
 	var out []Case
 	for _, suite := range suiteDirs {
-		cs, err := loadSuite(filepath.Join(root, suite), suite)
+		cs, err := loadSuite(root, filepath.Join(root, suite), suite)
 		if err != nil {
 			return Corpus{}, err
 		}
@@ -137,7 +142,7 @@ func LoadCorpus(root string) (Corpus, error) {
 	return Corpus{Cases: out, Suites: suiteDirs}, nil
 }
 
-func loadSuite(dir, suite string) ([]Case, error) {
+func loadSuite(root, dir, suite string) ([]Case, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("cases: %w", err)
@@ -151,7 +156,7 @@ func loadSuite(dir, suite string) ([]Case, error) {
 		if !isCaseDir(dir, name) {
 			continue
 		}
-		c, err := loadOne(filepath.Join(dir, name), name, suite)
+		c, err := loadOne(root, filepath.Join(dir, name), name, suite)
 		if err != nil {
 			return nil, err
 		}
@@ -203,12 +208,12 @@ func PendingScriptedGoldens(all []Case) []Case {
 	return out
 }
 
-// MissingBudget is cases that have no config.json. measure-budgets writes
-// those unless --force is set (then all cases are measured).
+// MissingBudget is cases that have no local config.json. measure-budgets
+// writes those unless --force is set (then all cases are measured).
 func MissingBudget(all []Case) []Case {
 	out := make([]Case, 0)
 	for _, c := range all {
-		if c.Budget == nil {
+		if c.ConfigPath == "" {
 			out = append(out, c)
 		}
 	}
@@ -294,7 +299,7 @@ func isCaseDir(parent, name string) bool {
 	return err == nil
 }
 
-func loadOne(dir, name, suite string) (Case, error) {
+func loadOne(root, dir, name, suite string) (Case, error) {
 	id := makeID(suite, name)
 	initPath := filepath.Join(dir, InitFile)
 	if _, err := os.Stat(initPath); err != nil {
@@ -304,7 +309,7 @@ func loadOne(dir, name, suite string) (Case, error) {
 	if err != nil {
 		return Case{}, fmt.Errorf("case %s: %w", id, err)
 	}
-	budget, configPath, err := loadBudget(dir)
+	cfg, configPath, err := resolveConfig(root, dir)
 	if err != nil {
 		return Case{}, fmt.Errorf("case %s: %w", id, err)
 	}
@@ -317,43 +322,9 @@ func loadOne(dir, name, suite string) (Case, error) {
 		ScriptPath: scriptPath,
 		GoldenPath: filepath.Join(dir, GoldenFile),
 		ConfigPath: configPath,
-		Budget:     budget,
+		Budget:     budgetPtr(cfg.Budget),
+		Compare:    cfg.Compare,
 	}, nil
-}
-
-func loadBudget(dir string) (*Budget, string, error) {
-	p := filepath.Join(dir, ConfigFile)
-	data, err := os.ReadFile(p)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, "", nil
-		}
-		return nil, "", err
-	}
-	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, "", fmt.Errorf("%s: empty", ConfigFile)
-	}
-	var b Budget
-	if err := json.Unmarshal(data, &b); err != nil {
-		return nil, "", fmt.Errorf("%s: %w", ConfigFile, err)
-	}
-	if b.MaxPeakMemoryBytes < 0 || b.MaxDurationMs < 0 {
-		return nil, "", fmt.Errorf("%s: negative budget", ConfigFile)
-	}
-	return &b, p, nil
-}
-
-// WriteBudget writes config.json into dir. Used by measure-budgets.
-func WriteBudget(dir string, b Budget) error {
-	if b.MaxPeakMemoryBytes < 0 || b.MaxDurationMs < 0 {
-		return fmt.Errorf("%s: negative budget", ConfigFile)
-	}
-	data, err := json.MarshalIndent(b, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(filepath.Join(dir, ConfigFile), data, 0o644)
 }
 
 func scriptToRun(dir string) (string, error) {

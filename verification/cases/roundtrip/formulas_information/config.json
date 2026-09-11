@@ -1,4 +1,7 @@
 {
   "maxPeakMemoryBytes": 281708544,
-  "maxDurationMs": 16115
+  "maxDurationMs": 16115,
+  "compare": {
+    "ignore": ["cellFilenamePrefix"]
+  }
 }

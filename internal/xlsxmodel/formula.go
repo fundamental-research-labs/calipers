@@ -79,3 +79,31 @@ func deltaA1(from, to string) (dCol, dRow int) {
 	}
 	return tc - fc, tr - fr
 }
+
+func expandA1Range(ref string) []string {
+	if ref == "" {
+		return nil
+	}
+	start, end, ok := strings.Cut(ref, ":")
+	if !ok {
+		return []string{ref}
+	}
+	sc, sr, ok1 := parseA1(start)
+	ec, er, ok2 := parseA1(end)
+	if !ok1 || !ok2 {
+		return []string{ref}
+	}
+	if sc > ec {
+		sc, ec = ec, sc
+	}
+	if sr > er {
+		sr, er = er, sr
+	}
+	out := make([]string, 0, (ec-sc+1)*(er-sr+1))
+	for r := sr; r <= er; r++ {
+		for c := sc; c <= ec; c++ {
+			out = append(out, formatCol(c)+strconv.Itoa(r))
+		}
+	}
+	return out
+}

@@ -36,7 +36,8 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--pa
   non-empty), export a result xlsx (not the golden), compare resolved
   workbook semantics to the committed Excel golden. PASS/FAIL is semantic
   diffs (values, types, formulas, styles, sheets, names, merges, freeze,
-  date1904), not ZIP-part counts.
+  date1904), not ZIP-part counts. Hierarchical config.json (cases → suite
+  → case) may declare narrow compare exceptions and cell value ranges.
 
   --engine excel    Excel COM host (Windows)
   --engine PATH     external binary:  save <in> <out>
@@ -239,7 +240,7 @@ func verifyOne(eng engine, c cases.Case, outDir string, packageDiag bool) caseOu
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
 	}
 
-	sem, err := xlsxmodel.CompareFiles(exportPath, c.GoldenPath)
+	sem, err := xlsxmodel.CompareFiles(exportPath, c.GoldenPath, c.Compare)
 	if err != nil {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
 	}

@@ -8,7 +8,7 @@ v1 is **Windows-only**. Goldens are produced via Excel COM (`Excel.Application`)
 
 This repository is the verification tool and its init corpus. It is not a spreadsheet engine.
 
-`verify` PASS/FAIL is resolved workbook semantics (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`), not ZIP-part or byte equality. Optional `--package` prints ZIP-part diffs as a diagnostic and does not change the gate. See [comparison scope](verification/README.md#what-to-compare).
+`verify` PASS/FAIL is resolved workbook semantics (values, types, formulas, styles, sheets, names, merges, freeze, `date1904`), not ZIP-part or byte equality. Optional `--package` prints ZIP-part diffs as a diagnostic and does not change the gate. Hierarchical `config.json` (cases root → suite → case) can declare narrow compare exceptions and cell value ranges so known golden quirks do not FAIL while every other axis still does. See [comparison scope](verification/README.md#what-to-compare).
 
 ## Requirements
 

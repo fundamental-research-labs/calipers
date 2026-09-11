@@ -1,4 +1,7 @@
 {
   "maxPeakMemoryBytes": 453574656,
-  "maxDurationMs": 2600
+  "maxDurationMs": 2600,
+  "compare": {
+    "ignore": ["anchorArraySpelling"]
+  }
 }

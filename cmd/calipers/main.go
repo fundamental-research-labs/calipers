@@ -100,14 +100,15 @@ Commands:
       Requires Windows + Excel once there is work to do.
 
   measure-budgets [--engine excel|PATH] [--margin 1.5] [--force] [--cases-dir DIR] [--suite NAME]
-      Run each case, record peak working set and wall time, write
-      optional config.json (maxPeakMemoryBytes, maxDurationMs) with a
-      margin. Missing config is valid. Requires Windows + Excel when
-      --engine excel (the default) and there is work to do.
+      Run each case, record peak working set and wall time, merge
+      maxPeakMemoryBytes / maxDurationMs into that case's config.json
+      (other keys are kept). Missing config is valid. Requires Windows
+      + Excel when --engine excel (the default) and there is work to do.
 
   verify --engine <path|excel> [--recalculate] [--package] [--cases-dir DIR] [--out-dir DIR] [--suite NAME] [--case ID]...
       Run each case in an engine (Excel or an external binary) and
       compare resolved workbook semantics to the committed Excel golden.
+      Hierarchical config.json may declare narrow compare exceptions.
       --package prints ZIP-part diffs without changing PASS/FAIL.
       --engine is required (binary path or excel). Binary argv:
                    save <in.xlsx> <out.xlsx>
