@@ -739,6 +739,15 @@ func TestLoadRealCorpus(t *testing.T) {
 	if len(pending) != 0 {
 		t.Fatalf("pending goldens: %d, want 0 (officejs goldens committed); first=%v", len(pending), pending)
 	}
+	uncapped := MissingBudget(all)
+	if len(uncapped) != 0 {
+		t.Fatalf("missing budgets: %d, want 0; first=%s", len(uncapped), uncapped[0].ID)
+	}
+	for _, c := range all {
+		if c.Budget == nil || c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
+			t.Errorf("%s: budget fields must be positive, got %+v", c.ID, c.Budget)
+		}
+	}
 	if len(goldenPass) != len(all) {
 		t.Fatalf("golden-compare pass len=%d, want all %d", len(goldenPass), len(all))
 	}
