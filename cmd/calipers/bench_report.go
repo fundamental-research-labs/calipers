@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -14,7 +15,7 @@ import (
 const (
 	benchReportHTMLName = "report.html"
 	rowsPerLetterPage   = 28
-	benchReportUsage    = `calipers bench-report --json IN.json --out DIR
+	benchReportUsage    = `calipers bench-report --json IN.json --out DIR [--coverage FILE.json]
 
   Read a JSON file from calipers bench and write report.html plus SVG
   charts into DIR. The HTML is self-contained (inline SVG, no ES modules)
@@ -26,7 +27,11 @@ const (
 
   Layout: short setup (Excel COM, sideloaded Office.js add-in, sequential
   same-machine series, Mog save/run), two per-task plots (speed, memory),
-  then a paginated per-case table.
+  optional Office.js API coverage pages, then a paginated per-case table.
+
+  --coverage FILE.json  Office.js Excel API coverage document (methods
+                        vs Mog host vs verification scripts). Copied into
+                        DIR as officejs-coverage.json.
 `
 )
 
@@ -35,6 +40,7 @@ func benchReportCmd(args []string) error {
 	fs.SetOutput(os.Stderr)
 	jsonPath := fs.String("json", "", "input JSON from calipers bench (required)")
 	outDir := fs.String("out", "", "directory for report.html and SVG charts (required)")
+	coveragePath := fs.String("coverage", "", "optional Office.js API coverage JSON")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stdout, benchReportUsage)
 	}
@@ -45,12 +51,12 @@ func benchReportCmd(args []string) error {
 		return err
 	}
 	if fs.NArg() > 0 || strings.TrimSpace(*jsonPath) == "" || strings.TrimSpace(*outDir) == "" {
-		return fmt.Errorf("usage: calipers bench-report --json IN.json --out DIR")
+		return fmt.Errorf("usage: calipers bench-report --json IN.json --out DIR [--coverage FILE.json]")
 	}
-	return renderBenchReport(*jsonPath, *outDir)
+	return renderBenchReport(*jsonPath, *outDir, *coveragePath)
 }
 
-func renderBenchReport(jsonPath, outDir string) error {
+func renderBenchReport(jsonPath, outDir, coveragePath string) error {
 	doc, err := loadBenchFile(jsonPath)
 	if err != nil {
 		return err
@@ -64,11 +70,18 @@ func renderBenchReport(jsonPath, outDir string) error {
 			return err
 		}
 	}
-	page := renderBenchHTML(doc, svgs)
+	cov, err := loadCoverage(coveragePath)
+	if err != nil {
+		return err
+	}
+	if err := writeCoverageCopy(coveragePath, outDir); err != nil {
+		return err
+	}
+	page := renderBenchHTML(doc, svgs, cov)
 	return os.WriteFile(filepath.Join(outDir, benchReportHTMLName), []byte(page), 0o644)
 }
 
-func renderBenchHTML(doc BenchFile, svgs map[string]string) string {
+func renderBenchHTML(doc BenchFile, svgs map[string]string, cov *CoverageFile) string {
 	var b strings.Builder
 	b.WriteString(`<!DOCTYPE html>
 <html lang="en">
@@ -146,6 +159,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
   }
   .page:last-of-type { page-break-after: auto; break-after: auto; }
 }
+` + coverageCSS() + `
 </style>
 </head>
 <body>
@@ -163,6 +177,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 		html.EscapeString(doc.GeneratedAt.UTC().Format(time.RFC3339)),
 		html.EscapeString(doc.Host.GOOS), html.EscapeString(doc.Host.Arch),
 		len(doc.Cases), len(doc.Engines))
+	b.WriteString(coverageFirstPageNote(cov))
 
 	if !benchHasExcelCOM(doc) {
 		b.WriteString(`<p class="note"><strong>Excel COM series was not collected.</strong> This is a Mog-only preview. Re-run on a Windows machine with desktop Excel to add the Excel series on the same plots.</p>`)
@@ -184,6 +199,7 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 	writeInlineChart(&b, svgs, "speed.svg")
 	writeInlineChart(&b, svgs, "memory.svg")
 	b.WriteString("</section>\n")
+	b.WriteString(renderCoveragePages(cov))
 	b.WriteString(caseTablePages(doc))
 	b.WriteString("</body>\n</html>\n")
 	return b.String()
@@ -304,10 +320,8 @@ func buildBenchCharts(doc BenchFile) map[string]string {
 	return map[string]string{
 		"speed.svg": svgTaskMarks("Speed — one mark per task", "task index", "wall time", colors, xs, speed, func(v float64) string {
 			return formatMs(int64(math.Round(v)))
-		}),
-		"memory.svg": svgTaskMarks("Memory — one mark per task", "task index", "peak working set", colors, xs, mem, func(v float64) string {
-			return formatBytes(int64(math.Round(v)))
-		}),
+		}, false),
+		"memory.svg": svgTaskMarks("Memory — one mark per task", "task index", "peak working set", colors, xs, mem, formatBytesAxis, true),
 	}
 }
 
@@ -323,7 +337,7 @@ func engineColor(eng BenchEngine) string {
 	return mogColor
 }
 
-func svgTaskMarks(title, xlab, ylab string, colors []string, xs, ys [][]float64, yfmt func(float64) string) string {
+func svgTaskMarks(title, xlab, ylab string, colors []string, xs, ys [][]float64, yfmt func(float64) string, bytes bool) string {
 	const W, H, lpad, rpad, tpad, bpad = 720.0, 250.0, 72.0, 14.0, 28.0, 44.0
 	innerW := W - lpad - rpad
 	innerH := H - tpad - bpad
@@ -357,14 +371,20 @@ func svgTaskMarks(title, xlab, ylab string, colors []string, xs, ys [][]float64,
 			minY = maxY / 10
 		}
 	}
-	// log-y: tasks differ by orders of magnitude; a mean would be meaningless
+	var ticks []float64
 	logY := maxY/minY >= 8
-	if logY {
+	if bytes {
+		minY, maxY, ticks = memoryAxis(minY, maxY)
+		logY = maxY/minY >= 8
+	} else if logY {
 		minY = math.Pow(10, math.Floor(math.Log10(minY)))
 		maxY = math.Pow(10, math.Ceil(math.Log10(maxY)))
 		if maxY <= minY {
 			maxY = minY * 10
 		}
+		ticks = yTicks(minY, maxY, logY)
+	} else {
+		ticks = yTicks(minY, maxY, logY)
 	}
 	yAt := func(v float64) float64 {
 		if logY {
@@ -383,7 +403,6 @@ func svgTaskMarks(title, xlab, ylab string, colors []string, xs, ys [][]float64,
 	fmt.Fprintf(&b, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#333" stroke-width="1"/>`, lpad, tpad, lpad, tpad+innerH)
 	fmt.Fprintf(&b, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#333" stroke-width="1"/>`, lpad, tpad+innerH, lpad+innerW, tpad+innerH)
 
-	ticks := yTicks(minY, maxY, logY)
 	for _, v := range ticks {
 		y := yAt(v)
 		fmt.Fprintf(&b, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#e6eaee" stroke-width="1"/>`, lpad, y, lpad+innerW, y)
@@ -463,6 +482,90 @@ func yTicks(minY, maxY float64, logY bool) []float64 {
 		return out
 	}
 	return []float64{minY, minY + (maxY-minY)/4, minY + (maxY-minY)/2, minY + 3*(maxY-minY)/4, maxY}
+}
+
+// memoryAxis snaps a byte range onto 1/2/5 × KB/MB/GB so the Y axis
+// reads "100 MB", "1 GB" — not 10^n bytes labeled as "953.7 MB".
+func memoryAxis(minY, maxY float64) (lo, hi float64, ticks []float64) {
+	steps := memorySteps()
+	if minY <= 0 {
+		minY = 1
+	}
+	if maxY < minY {
+		maxY = minY
+	}
+	lo = steps[0]
+	for i := len(steps) - 1; i >= 0; i-- {
+		if steps[i] <= minY {
+			lo = steps[i]
+			break
+		}
+	}
+	hi = steps[len(steps)-1]
+	for _, s := range steps {
+		if s >= maxY {
+			hi = s
+			break
+		}
+	}
+	if hi <= lo {
+		hi = lo * 10
+	}
+	for _, s := range steps {
+		if s >= lo && s <= hi {
+			ticks = append(ticks, s)
+		}
+	}
+	if len(ticks) == 0 {
+		ticks = []float64{lo, hi}
+	}
+	return lo, hi, ticks
+}
+
+func memorySteps() []float64 {
+	units := []float64{1, 1024, 1024 * 1024, 1024 * 1024 * 1024, 1024 * 1024 * 1024 * 1024}
+	muls := []float64{1, 2, 5, 10, 20, 50, 100, 200, 500}
+	seen := map[int64]struct{}{}
+	var out []float64
+	for _, u := range units {
+		for _, m := range muls {
+			v := int64(math.Round(m * u))
+			if v <= 0 {
+				continue
+			}
+			if _, ok := seen[v]; ok {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, float64(v))
+		}
+	}
+	sort.Float64s(out)
+	return out
+}
+
+func formatBytesAxis(v float64) string {
+	if v <= 0 {
+		return "0 B"
+	}
+	const (
+		kb = 1024.0
+		mb = 1024.0 * 1024
+		gb = 1024.0 * 1024 * 1024
+		tb = 1024.0 * 1024 * 1024 * 1024
+	)
+	switch {
+	case v >= tb:
+		return fmt.Sprintf("%g TB", v/tb)
+	case v >= gb:
+		return fmt.Sprintf("%g GB", v/gb)
+	case v >= mb:
+		return fmt.Sprintf("%g MB", v/mb)
+	case v >= kb:
+		return fmt.Sprintf("%g KB", v/kb)
+	default:
+		return fmt.Sprintf("%g B", v)
+	}
 }
 
 func benchHasExcelCOM(doc BenchFile) bool {

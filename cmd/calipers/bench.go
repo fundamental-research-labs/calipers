@@ -13,7 +13,7 @@ import (
 	"github.com/fundamental-research-labs/calipers/internal/cases"
 )
 
-const benchUsage = `calipers bench --engine excel --engine PATH --json OUT.json [--report DIR] [--cases-dir DIR] [--suite NAME] [--case ID]...
+const benchUsage = `calipers bench --engine excel --engine PATH --json OUT.json [--report DIR] [--coverage FILE.json] [--cases-dir DIR] [--suite NAME] [--case ID]...
 
   Run the same committed-golden corpus as calipers verify, once per
   --engine, one case at a time. Record wall time and peak working set
@@ -29,6 +29,8 @@ const benchUsage = `calipers bench --engine excel --engine PATH --json OUT.json 
                     colleague runs the Excel COM series.
 
   --report DIR      also write report.html + SVG charts (bench-report).
+  --coverage FILE   Office.js API coverage JSON, included in the HTML
+                    when --report is set.
 
   Sequential: engines and cases never overlap. The next process starts
   only after the previous one has exited, so concurrency cannot spoil
@@ -88,6 +90,7 @@ func benchCmd(args []string) error {
 	fs.SetOutput(os.Stderr)
 	jsonPath := fs.String("json", "", "output JSON path (required)")
 	reportDir := fs.String("report", "", "optional directory: also write report.html + SVG")
+	coveragePath := fs.String("coverage", "", "optional Office.js API coverage JSON for --report")
 	casesDir := fs.String("cases-dir", cases.DirName, "verification cases directory")
 	suite := fs.String("suite", "", "suite directory to run (default: all suites)")
 	var engineSpecs []string
@@ -131,7 +134,7 @@ func benchCmd(args []string) error {
 	err := runBench(*casesDir, *suite, caseIDs, engineSpecs, *jsonPath)
 	if strings.TrimSpace(*reportDir) != "" {
 		if _, statErr := os.Stat(*jsonPath); statErr == nil {
-			if rerr := renderBenchReport(*jsonPath, *reportDir); rerr != nil {
+			if rerr := renderBenchReport(*jsonPath, *reportDir, *coveragePath); rerr != nil {
 				if err != nil {
 					return fmt.Errorf("%v; report: %w", err, rerr)
 				}
