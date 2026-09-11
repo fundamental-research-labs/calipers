@@ -97,6 +97,9 @@ func TestCommittedOfficejsMatchesSpecs(t *testing.T) {
 		if err != nil || st.Size() == 0 {
 			t.Errorf("%s: missing golden.xlsx", s.name)
 		}
+		if _, err := os.Stat(filepath.Join(dir, "config.json")); err != nil {
+			t.Errorf("%s: missing config.json", s.name)
+		}
 	}
 }
 

@@ -12,11 +12,12 @@ Committed `golden.xlsx` files come from Windows + Excel
 calipers excel-run-pass verification\cases\officejs
 ```
 
-Optional per-case `config.json` (`maxPeakMemoryBytes`, `maxDurationMs`) is
-also Windows-only, after goldens:
+Committed `config.json` budgets (`maxPeakMemoryBytes`, `maxDurationMs`)
+come from Windows `measure-budgets` (measured Excel peak working set and
+wall time, times a 1.5 margin). To regenerate:
 
 ```bat
-calipers measure-budgets --engine excel --suite officejs
+calipers measure-budgets --engine excel --suite officejs --force
 ```
 
 Regenerate the case dirs from the spec table (does not write goldens or configs):

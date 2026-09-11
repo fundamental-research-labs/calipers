@@ -1107,11 +1107,12 @@ func TestOfficejsSuite(t *testing.T) {
 		if m.Input != InitFile {
 			t.Errorf("%s: input %q, want %s", c.ID, m.Input, InitFile)
 		}
-		if c.Budget != nil || c.ConfigPath != "" {
-			t.Errorf("%s: officejs case must not ship a budget config yet", c.ID)
+		if c.Budget == nil || c.ConfigPath == "" {
+			t.Errorf("%s: officejs case must have a committed %s budget", c.ID, ConfigFile)
+			continue
 		}
-		if _, err := os.Stat(filepath.Join(c.Dir, ConfigFile)); err == nil {
-			t.Errorf("%s: must not have %s until measure-budgets runs on Windows", c.ID, ConfigFile)
+		if c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
+			t.Errorf("%s: budget fields must be positive, got %+v", c.ID, c.Budget)
 		}
 		body, err := os.ReadFile(c.ScriptPath)
 		if err != nil {
