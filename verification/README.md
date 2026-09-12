@@ -99,4 +99,9 @@ go build -o calipers ./cmd/calipers
 ./calipers verify --engine /path/to/engine --suite scratch
 ./calipers verify --engine /path/to/engine --case roundtrip/simple
 ./calipers verify --engine excel --case roundtrip/simple
+
+# Sequential speed/memory series (JSON + US Letter HTML)
+./calipers bench --engine excel --engine /path/to/mog --json bench.json --report ./report
+./calipers bench --engine /path/to/mog --json bench.json --report ./report   # Mog-only preview
+./calipers bench-report --json bench.json --out ./report
 ```
