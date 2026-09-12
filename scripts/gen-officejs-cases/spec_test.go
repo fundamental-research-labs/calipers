@@ -9,8 +9,8 @@ import (
 
 func TestSpecsCountUniqueAndOfficeJS(t *testing.T) {
 	specs := allSpecs()
-	if n := len(specs); n < 90 || n > 110 {
-		t.Fatalf("spec count %d, want 90-110", n)
+	if n := len(specs); n < 120 || n > 160 {
+		t.Fatalf("spec count %d, want 120-160", n)
 	}
 	seen := map[string]bool{}
 	joined := strings.Builder{}
@@ -37,6 +37,11 @@ func TestSpecsCountUniqueAndOfficeJS(t *testing.T) {
 		joined.WriteByte('\n')
 	}
 	text := joined.String()
+	for _, needle := range uncoveredMogMethodNeedles {
+		if !strings.Contains(text, needle) {
+			t.Errorf("specs missing %s", needle)
+		}
+	}
 	for _, needle := range []string{
 		"tables.add",
 		"pivotTables.add",
@@ -93,14 +98,69 @@ func TestCommittedOfficejsMatchesSpecs(t *testing.T) {
 		if string(init) != string(emptyBytes) {
 			t.Errorf("%s: init.xlsx is not a copy of roundtrip/empty", s.name)
 		}
-		st, err := os.Stat(filepath.Join(dir, "golden.xlsx"))
-		if err != nil || st.Size() == 0 {
-			t.Errorf("%s: missing golden.xlsx", s.name)
+		golden := filepath.Join(dir, "golden.xlsx")
+		st, err := os.Stat(golden)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				t.Errorf("%s: golden: %v", s.name, err)
+			}
+			continue
+		}
+		if st.Size() == 0 {
+			t.Errorf("%s: empty golden.xlsx", s.name)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "config.json")); err != nil {
-			t.Errorf("%s: missing config.json", s.name)
+			t.Errorf("%s: has golden.xlsx but missing config.json", s.name)
 		}
 	}
+}
+
+// uncoveredMogMethodNeedles are Office.js methods mog implements that no
+// pre-existing officejs/scratch/default script invoked. Each must appear in
+// allSpecs() so generated cases cover the leftover mutators/navigators.
+var uncoveredMogMethodNeedles = []string{
+	"getCell(",
+	"getRow(",
+	"getColumn(",
+	"getLastCell(",
+	"getLastRow(",
+	"getLastColumn(",
+	"getResizedRange(",
+	"getAbsoluteResizedRange(",
+	"getRowsAbove(",
+	"getRowsBelow(",
+	"getColumnsBefore(",
+	"getColumnsAfter(",
+	"getBoundingRect(",
+	"getIntersection(",
+	".unmerge(",
+	"format.fill.clear",
+	".activate(",
+	"doomed.delete(",
+	".getNext(",
+	".getPrevious(",
+	".getFirst(",
+	".getLast(",
+	"worksheets.getItem(",
+	"addFormulaLocal(",
+	"named.delete(",
+	"table.delete(",
+	"convertToRange(",
+	"table.resize(",
+	"rows.getItemAt(",
+	"deleteRows(",
+	"deleteRowsAt(",
+	`columns.getItem("Product").delete(`,
+	"getHeaderRowRange(",
+	"getDataBodyRange(",
+	"getTotalRowRange(",
+	"freezeAt(",
+	".unfreeze(",
+	"autoFilter.remove(",
+	"clearCriteria(",
+	"clearColumnCriteria(",
+	".reapply(",
+	"dataValidation.clear(",
 }
 
 func TestGenerateWritesInitAndScriptNoGolden(t *testing.T) {

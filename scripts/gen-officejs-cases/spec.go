@@ -28,7 +28,7 @@ func rawJS(name, script string) spec {
 }
 
 func allSpecs() []spec {
-	out := make([]spec, 0, 100)
+	out := make([]spec, 0, 160)
 	out = append(out, rangeSpecs()...)
 	out = append(out, styleSpecs()...)
 	out = append(out, tableSpecs()...)

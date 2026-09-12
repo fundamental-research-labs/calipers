@@ -94,5 +94,51 @@ await Excel.run(async (context) => {
   }
 });
 `),
+		sheetJS("range_get_cell", "officejs: write via Worksheet.getCell and Range.getCell.", `  sheet.getCell(0, 0).values = [["ws"]];
+  sheet.getRange("A1:C3").getCell(1, 1).values = [["rng"]];`),
+		sheetJS("range_get_row", "officejs: write via Range.getRow.", `  sheet.getRange("A1:C3").getRow(1).values = [[10, 20, 30]];`),
+		sheetJS("range_get_column", "officejs: write via Range.getColumn.", `  sheet.getRange("A1:C3").getColumn(1).values = [[2], [5], [8]];`),
+		sheetJS("range_get_last", "officejs: write via getLastCell / getLastRow / getLastColumn.", `  const block = sheet.getRange("A1:C3");
+  block.values = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9],
+  ];
+  block.getLastCell().values = [["LC"]];
+  block.getLastRow().values = [["a", "b", "c"]];
+  block.getLastColumn().values = [[1], [2], [3]];`),
+		sheetJS("range_resized", "officejs: write via getResizedRange and getAbsoluteResizedRange.", `  sheet.getRange("A1").getResizedRange(1, 1).values = [
+    [1, 2],
+    [3, 4],
+  ];
+  sheet.getRange("D1").getAbsoluteResizedRange(2, 2).values = [
+    [5, 6],
+    [7, 8],
+  ];`),
+		sheetJS("range_rows_above_below", "officejs: write via getRowsAbove and getRowsBelow.", `  sheet.getRange("A3:B3").values = [["x", "y"]];
+  sheet.getRange("A3:B3").getRowsAbove(2).values = [
+    [1, 2],
+    [3, 4],
+  ];
+  sheet.getRange("A3:B3").getRowsBelow(1).values = [[5, 6]];`),
+		sheetJS("range_cols_before_after", "officejs: write via getColumnsBefore and getColumnsAfter.", `  sheet.getRange("C1:C2").values = [[9], [9]];
+  sheet.getRange("C1:C2").getColumnsBefore(2).values = [
+    [1, 2],
+    [3, 4],
+  ];
+  sheet.getRange("C1:C2").getColumnsAfter(1).values = [[5], [6]];`),
+		sheetJS("range_bounding_rect", "officejs: write via getBoundingRect.", `  sheet.getRange("A1").getBoundingRect(sheet.getRange("C3")).values = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9],
+  ];`),
+		sheetJS("range_intersection", "officejs: write via getIntersection.", `  sheet.getRange("A1:C3").getIntersection(sheet.getRange("B2:D4")).values = [
+    [1, 2],
+    [3, 4],
+  ];`),
+		sheetJS("range_unmerge", "officejs: merge a block then unmerge it.", `  sheet.getRange("A1").values = [["merged"]];
+  sheet.getRange("A1:B2").merge();
+  sheet.getRange("A1:B2").unmerge();
+  sheet.getRange("B2").values = [["split"]];`),
 	}
 }

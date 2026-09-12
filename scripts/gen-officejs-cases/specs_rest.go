@@ -132,5 +132,132 @@ await Excel.run(async (context) => {
   };`),
 		sheetJS("merge_cells", "officejs: merge a 2x2 block.", `  sheet.getRange("A1").values = [["merged"]];
   sheet.getRange("A1:B2").merge();`),
+		rawJS("sheet_activate", `// officejs: activate a newly added worksheet and write through it.
+await Excel.run(async (context) => {
+  const extra = context.workbook.worksheets.add("Second");
+  extra.getRange("A1").values = [["second"]];
+  extra.activate();
+  const active = context.workbook.worksheets.getActiveWorksheet();
+  active.getRange("B1").values = [["active"]];
+  await context.sync();
+});
+`),
+		rawJS("sheet_delete", `// officejs: add a worksheet then delete it.
+await Excel.run(async (context) => {
+  const sheet = context.workbook.worksheets.getActiveWorksheet();
+  sheet.getRange("A1").values = [["kept"]];
+  const doomed = context.workbook.worksheets.add("Doomed");
+  doomed.getRange("A1").values = [["gone"]];
+  doomed.delete();
+  await context.sync();
+});
+`),
+		rawJS("sheet_get_next", `// officejs: write via Worksheet.getNext.
+await Excel.run(async (context) => {
+  const first = context.workbook.worksheets.getActiveWorksheet();
+  first.name = "First";
+  first.getRange("A1").values = [["first"]];
+  context.workbook.worksheets.add("Second");
+  first.getNext().getRange("B1").values = [["via next"]];
+  await context.sync();
+});
+`),
+		rawJS("sheet_get_previous", `// officejs: write via Worksheet.getPrevious.
+await Excel.run(async (context) => {
+  const first = context.workbook.worksheets.getActiveWorksheet();
+  first.name = "First";
+  first.getRange("A1").values = [["first"]];
+  const second = context.workbook.worksheets.add("Second");
+  second.getPrevious().getRange("B1").values = [["via prev"]];
+  await context.sync();
+});
+`),
+		rawJS("sheet_get_first", `// officejs: write via worksheets.getFirst.
+await Excel.run(async (context) => {
+  context.workbook.worksheets.add("Second");
+  context.workbook.worksheets.getFirst().getRange("A1").values = [["first"]];
+  await context.sync();
+});
+`),
+		rawJS("sheet_get_last", `// officejs: write via worksheets.getLast.
+await Excel.run(async (context) => {
+  context.workbook.worksheets.add("Second");
+  context.workbook.worksheets.getLast().getRange("A1").values = [["last"]];
+  await context.sync();
+});
+`),
+		rawJS("sheet_get_item", `// officejs: write via worksheets.getItem.
+await Excel.run(async (context) => {
+  context.workbook.worksheets.add("Second");
+  context.workbook.worksheets.getItem("Second").getRange("A1").values = [["via getItem"]];
+  await context.sync();
+});
+`),
+		sheetJS("names_formula_local", "officejs: workbook named formula via addFormulaLocal.", `  sheet.getRange("A1").values = [[10]];
+  context.workbook.names.addFormulaLocal("DoubleA1", "=2*Sheet1!$A$1");
+  sheet.getRange("B1").formulas = [["=DoubleA1"]];`),
+		sheetJS("names_delete", "officejs: add a named range then NamedItem.delete.", `  sheet.getRange("A1").values = [[42]];
+  const named = context.workbook.names.add("TempName", sheet.getRange("A1"));
+  named.delete();
+  sheet.getRange("B1").values = [["gone"]];`),
+		sheetJS("freeze_at", "officejs: freeze panes at a cell.", `  sheet.getRange("A1:C3").values = [
+    ["Name", "Qty", "Price"],
+    ["a", 1, 2],
+    ["b", 3, 4],
+  ];
+  sheet.freezePanes.freezeAt(sheet.getRange("B2"));`),
+		sheetJS("freeze_unfreeze", "officejs: freeze a row then unfreeze.", `  sheet.getRange("A1:C2").values = [["K", "V1", "V2"], ["a", 1, 2]];
+  sheet.freezePanes.freezeRows(1);
+  sheet.freezePanes.unfreeze();`),
+		sheetJS("autofilter_remove", "officejs: apply AutoFilter then remove it.", `  sheet.getRange("A1:B4").values = [
+    ["Name", "Value"],
+    ["a", 1],
+    ["b", 2],
+    ["c", 3],
+  ];
+  sheet.autoFilter.apply(sheet.getRange("A1:B4"));
+  sheet.autoFilter.remove();`),
+		sheetJS("autofilter_clear_criteria", "officejs: apply AutoFilter then clearCriteria.", `  sheet.getRange("A1:B5").values = [
+    ["Name", "Value"],
+    ["a", 5],
+    ["b", 15],
+    ["c", 25],
+    ["d", 8],
+  ];
+  sheet.autoFilter.apply(sheet.getRange("A1:B5"), 1, {
+    criterion1: ">10",
+    filterOn: Excel.FilterOn.custom,
+  });
+  sheet.autoFilter.clearCriteria();`),
+		sheetJS("autofilter_clear_column_criteria", "officejs: apply AutoFilter then clearColumnCriteria.", `  sheet.getRange("A1:B5").values = [
+    ["Name", "Value"],
+    ["a", 5],
+    ["b", 15],
+    ["c", 25],
+    ["d", 8],
+  ];
+  sheet.autoFilter.apply(sheet.getRange("A1:B5"), 1, {
+    criterion1: ">10",
+    filterOn: Excel.FilterOn.custom,
+  });
+  sheet.autoFilter.clearColumnCriteria(1);`),
+		sheetJS("autofilter_reapply", "officejs: change a filtered cell then reapply AutoFilter.", `  sheet.getRange("A1:B5").values = [
+    ["Name", "Value"],
+    ["a", 5],
+    ["b", 15],
+    ["c", 25],
+    ["d", 8],
+  ];
+  sheet.autoFilter.apply(sheet.getRange("A1:B5"), 1, {
+    criterion1: ">10",
+    filterOn: Excel.FilterOn.custom,
+  });
+  sheet.getRange("B2").values = [[50]];
+  sheet.autoFilter.reapply();`),
+		sheetJS("validation_clear", "officejs: set list validation then dataValidation.clear.", `  const range = sheet.getRange("A1");
+  range.dataValidation.rule = {
+    list: { inCellDropDown: true, source: "Yes,No,Maybe" },
+  };
+  range.dataValidation.clear();`),
 	}
 }
