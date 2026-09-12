@@ -60,5 +60,8 @@ func styleSpecs() []spec {
   sheet.getRange("A1").format.columnWidth = 28;
   sheet.getRange("A1").format.rowHeight = 22;
   sheet.getRange("B1").format.columnWidth = 12;`),
+		sheetJS("fill_clear", "officejs: set a fill then format.fill.clear.", `  sheet.getRange("A1").values = [["x"]];
+  sheet.getRange("A1").format.fill.color = "#FFFF00";
+  sheet.getRange("A1").format.fill.clear();`),
 	}
 }

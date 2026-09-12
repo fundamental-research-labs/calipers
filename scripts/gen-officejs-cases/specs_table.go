@@ -188,5 +188,39 @@ await Excel.run(async (context) => {
   await context.sync();
 });
 `),
+		sheetJS("table_delete", "officejs: create a table then table.delete.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  table.delete();
+  sheet.getRange("E1").values = [["deleted"]];`),
+		sheetJS("table_convert_to_range", "officejs: convert a table back to a range.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  const converted = table.convertToRange();
+  converted.getCell(0, 0).values = [["plain"]];`),
+		sheetJS("table_resize", "officejs: resize a table to include another row.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  sheet.getRange("A5:C5").values = [["East", "C", 50]];
+  table.resize("A1:C5");`),
+		sheetJS("table_rows_delete", "officejs: delete one table data row.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  table.rows.getItemAt(1).delete();`),
+		sheetJS("table_rows_delete_many", "officejs: delete table rows by index list.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  table.rows.deleteRows([0, 2]);`),
+		sheetJS("table_rows_delete_at", "officejs: delete a contiguous run of table rows.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  table.rows.deleteRowsAt(1, 1);`),
+		sheetJS("table_columns_delete", "officejs: delete a table column.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  table.columns.getItem("Product").delete();`),
+		sheetJS("table_header_body_total_write", "officejs: write header, body, and total table ranges.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  table.showTotals = true;
+  table.getHeaderRowRange().values = [["R", "P", "S"]];
+  table.getDataBodyRange().values = [
+    ["North", "X", 1],
+    ["South", "Y", 2],
+    ["West", "Z", 3],
+  ];
+  table.getTotalRowRange().values = [["Total", "", 6]];`),
 	}
 }

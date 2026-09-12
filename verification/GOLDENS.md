@@ -40,8 +40,9 @@ calipers excel-run verification\cases\default\multi_row_formulas\init.xlsx verif
 
 Each successful run also writes `golden.xlsx.meta.json` beside the golden.
 
-`officejs/` cases start from `roundtrip/empty` and have committed
-`excel-run` goldens (`host=excel-win`, `script=script.js`). On Windows,
+`officejs/` cases start from `roundtrip/empty`. The original 100 have
+committed `excel-run` goldens (`host=excel-win`, `script=script.js`);
+newer cases are pending until a Windows `excel-run-pass`. On Windows,
 regenerate every pending scripted golden:
 
 ```bat
