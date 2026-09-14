@@ -259,5 +259,66 @@ await Excel.run(async (context) => {
     list: { inCellDropDown: true, source: "Yes,No,Maybe" },
   };
   range.dataValidation.clear();`),
+		rawJS("sheet_lookup", `// officejs: worksheet collection getCount / getItemOrNullObject and getNextOrNullObject / getPreviousOrNullObject.
+await Excel.run(async (context) => {
+  const sheets = context.workbook.worksheets;
+  const first = sheets.getActiveWorksheet();
+  first.name = "First";
+  const second = sheets.add("Second");
+  const next = first.getNextOrNullObject();
+  next.getRange("A1").values = [["via nextOrNull"]];
+  const beyond = second.getNextOrNullObject();
+  const before = first.getPreviousOrNullObject();
+  const missing = context.workbook.worksheets.getItemOrNullObject("Missing");
+  const count = context.workbook.worksheets.getCount();
+  await context.sync();
+  first.getRange("B1").values = [[count.value]];
+  first.getRange("C1").values = [[beyond.isNullObject ? "no-next" : "next"]];
+  first.getRange("D1").values = [[before.isNullObject ? "no-prev" : "prev"]];
+  first.getRange("E1").values = [[missing.isNullObject ? "missing" : "hit"]];
+  await context.sync();
+});
+`),
+		sheetJS("names_lookup", "officejs: named-item getCount / getItem / getItemOrNullObject and getRange / getRangeOrNullObject.", `  sheet.getRange("A1").values = [[42]];
+  context.workbook.names.add("Answer", sheet.getRange("A1"));
+  const named = context.workbook.names.getItem("Answer");
+  const resolved = named.getRange();
+  resolved.values = [["via getItem"]];
+  const maybeRange = named.getRangeOrNullObject();
+  maybeRange.getCell(0, 0).values = [["via getRangeOrNull"]];
+  const missing = context.workbook.names.getItemOrNullObject("Nope");
+  const count = context.workbook.names.getCount();
+  await context.sync();
+  sheet.getRange("C1").values = [[count.value]];
+  sheet.getRange("D1").values = [[missing.isNullObject ? "gone" : "hit"]];`),
+		sheetJS("autofilter_get_range", "officejs: AutoFilter.getRange and getRangeOrNullObject.", `  sheet.getRange("A1:B4").values = [
+    ["Name", "Value"],
+    ["a", 1],
+    ["b", 2],
+    ["c", 3],
+  ];
+  sheet.autoFilter.apply(sheet.getRange("A1:B4"));
+  const filtered = sheet.autoFilter.getRange();
+  filtered.getCell(0, 0).values = [["Name"]];
+  sheet.autoFilter.remove();
+  const maybe = sheet.autoFilter.getRangeOrNullObject();
+  await context.sync();
+  sheet.getRange("D1").values = [[maybe.isNullObject ? "off" : "on"]];`),
+		sheetJS("validation_invalid_cells", "officejs: dataValidation.getInvalidCells and getInvalidCellsOrNullObject.", `  const range = sheet.getRange("A1");
+  range.dataValidation.rule = {
+    list: { inCellDropDown: true, source: "Yes,No" },
+  };
+  range.values = [["Yes"]];
+  const none = range.dataValidation.getInvalidCellsOrNullObject();
+  await context.sync();
+  sheet.getRange("B1").values = [[none.isNullObject ? "none" : "some"]];
+  range.values = [["Nope"]];
+  const invalid = range.dataValidation.getInvalidCells();
+  invalid.values = [["Yes"]];
+  await context.sync();`),
+		sheetJS("borders_get_item_at", "officejs: write a border via RangeBorderCollection.getItemAt.", `  sheet.getRange("A1").values = [["x"]];
+  const top = sheet.getRange("A1").format.borders.getItemAt(0);
+  top.style = Excel.BorderLineStyle.continuous;
+  top.color = "#FF0000";`),
 	}
 }

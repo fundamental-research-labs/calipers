@@ -222,5 +222,55 @@ await Excel.run(async (context) => {
     ["West", "Z", 3],
   ];
   table.getTotalRowRange().values = [["Total", "", 6]];`),
+		sheetJS("table_lookup", "officejs: table collection getCount / getItem / getItemAt / getItemOrNullObject and Table.getRange.", sales+`
+  const created = sheet.tables.add("A1:C4", true);
+  created.name = "Sales";
+  const byName = sheet.tables.getItem("Sales");
+  const full = byName.getRange();
+  full.getCell(0, 0).values = [["Region"]];
+  const byIndex = sheet.tables.getItemAt(0);
+  byIndex.name = "SalesTable";
+  const missing = sheet.tables.getItemOrNullObject("Nope");
+  const count = sheet.tables.getCount();
+  await context.sync();
+  sheet.getRange("E1").values = [[count.value]];
+  sheet.getRange("F1").values = [[missing.isNullObject ? "gone" : "hit"]];`),
+		sheetJS("table_row_get_range", "officejs: write a table data row via TableRow.getRange.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  const rowRange = table.rows.getItemAt(0).getRange();
+  rowRange.values = [["North", "X", 1]];`),
+		sheetJS("table_column_lookup", "officejs: table column getItemAt and getItemOrNullObject.", sales+`
+  const table = sheet.tables.add("A1:C4", true);
+  const product = table.columns.getItemAt(1);
+  product.name = "Prod";
+  const missing = table.columns.getItemOrNullObject("Nope");
+  await context.sync();
+  sheet.getRange("E1").values = [[missing.isNullObject ? "gone" : "hit"]];`),
+		rawJS("pivot_hierarchy_get_item", `// officejs: bind PivotHierarchyCollection.getItem then add the hierarchy.
+await Excel.run(async (context) => {
+  const data = context.workbook.worksheets.getActiveWorksheet();
+  data.getRange("A1:C6").values = [
+    ["Region", "Product", "Sales"],
+    ["East", "A", 10],
+    ["West", "A", 20],
+    ["East", "B", 30],
+    ["West", "B", 40],
+    ["East", "A", 15],
+  ];
+  await context.sync();
+  const dest = context.workbook.worksheets.add("Pivot");
+  await context.sync();
+  const pivot = context.workbook.pivotTables.add(
+    "LookupPivot",
+    data.getRange("A1:C6"),
+    dest.getRange("A1")
+  );
+  const region = pivot.hierarchies.getItem("Region");
+  const sales = pivot.hierarchies.getItem("Sales");
+  pivot.rowHierarchies.add(region);
+  pivot.dataHierarchies.add(sales);
+  await context.sync();
+});
+`),
 	}
 }

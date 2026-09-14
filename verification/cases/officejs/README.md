@@ -1,10 +1,10 @@
 # officejs (blank-init Office.js)
 
-135 cases that start from a **blank XLSX** (byte copy of
+144 cases that start from a **blank XLSX** (byte copy of
 [`../roundtrip/empty/init.xlsx`](../roundtrip/empty/init.xlsx)) and run one
 `await Excel.run(...)` script. This is added coverage next to the 15
 [`scratch/`](../scratch/) cases; those keep their committed goldens.
-The original 100 cases have committed `excel-run` goldens; 35 newer
+The original 100 cases have committed `excel-run` goldens; 44 newer
 cases are pending Windows `excel-run-pass` (`verify` skips a missing
 golden).
 
@@ -32,4 +32,6 @@ go run ./scripts/gen-officejs-cases
 Each case is one primary feature: tables, pivot tables, charts, spill
 functions, styles, small and large grid writes, range navigators,
 worksheets, names, conditional formatting, validation, autofilter,
-freeze, comments, hyperlinks, sort, and insert/delete.
+freeze, comments, hyperlinks, sort, insert/delete, and leftover
+collection lookups (`getCount`, `getItem` / `getItemAt` / `get*OrNullObject`,
+`getRange`).
