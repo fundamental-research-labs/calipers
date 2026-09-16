@@ -1,0 +1,14 @@
+// Conditional format collection and range queries.
+await Excel.run(async (context) => {
+  const sheet = context.workbook.worksheets.getActiveWorksheet();
+
+  sheet.getRange("B2:B5").values = [[1], [5], [10], [20]];
+  const formats = sheet.getRange("B2:B5").conditionalFormats;
+  const first = formats.add("CellValue");
+  first.cellValue.rule = {formula1: "5", operator: "GreaterThan"};
+  first.cellValue.format.fill.color = "#FFFF00";
+  let output;
+  first.load("id"); await context.sync(); const found = formats.getItem(first.id); found.load("type"); await context.sync(); output = found.type;
+  sheet.getRange("D1").values = [[output]];
+  await context.sync();
+});

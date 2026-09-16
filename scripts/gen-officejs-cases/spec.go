@@ -35,6 +35,10 @@ func allSpecs() []spec {
 	out = append(out, chartSpecs()...)
 	out = append(out, spillSpecs()...)
 	out = append(out, restSpecs()...)
+	out = append(out, expansionSpecs()...)
+	out = append(out, commentExpansionSpecs()...)
+	out = append(out, conditionalExpansionSpecs()...)
+	out = append(out, rangeQueryExpansionSpecs()...)
 	return out
 }
 
