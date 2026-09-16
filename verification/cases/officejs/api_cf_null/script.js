@@ -8,7 +8,7 @@ await Excel.run(async (context) => {
   first.cellValue.rule = {formula1: "5", operator: "GreaterThan"};
   first.cellValue.format.fill.color = "#FFFF00";
   let output;
-  const found = formats.getItemOrNullObject("missing-format"); await context.sync(); output = found.isNullObject;
+  const found = formats.getItemOrNullObject("999"); await context.sync(); output = found.isNullObject;
   sheet.getRange("D1").values = [[output]];
   await context.sync();
 });

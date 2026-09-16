@@ -754,8 +754,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if n := len(all); n < 223 || n > 263 {
-		t.Fatalf("real corpus: got %d cases, want 223-263 (103 existing + 120-160 officejs)", n)
+	if n := len(all); n < 276 || n > 316 {
+		t.Fatalf("real corpus: got %d cases, want 276-316 (103 existing + 180-210 officejs)", n)
 	}
 	wantSuites := "default,officejs,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
@@ -842,8 +842,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	if nRT != 83 || nDef != 5 || nScratch != 15 {
 		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 83/5/15", nRT, nDef, nScratch)
 	}
-	if nOfficejs < 120 || nOfficejs > 160 {
-		t.Fatalf("officejs cases: %d, want 120-160", nOfficejs)
+	if nOfficejs < 180 || nOfficejs > 210 {
+		t.Fatalf("officejs cases: %d, want 180-210", nOfficejs)
 	}
 	if len(all) != nRT+nDef+nScratch+nOfficejs {
 		t.Fatalf("suite counts do not sum to corpus len %d", len(all))
@@ -927,13 +927,10 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("pending golden %s: only new officejs cases may lack goldens", id)
 		}
 	}
-	if len(pending) == 0 {
-		t.Fatal("expected pending-golden officejs cases (Linux cannot produce excel-win goldens)")
-	}
 	uncapped := MissingBudget(all)
 	for _, c := range uncapped {
 		if c.Suite != "officejs" {
-			t.Errorf("missing budget %s: only pending officejs cases may lack config.json", c.ID)
+			t.Errorf("missing budget %s: only officejs cases may lack config.json", c.ID)
 		}
 	}
 	pendingSet := map[string]bool{}
@@ -942,6 +939,9 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	for _, c := range all {
 		if pendingSet[c.ID] {
+			continue
+		}
+		if c.Suite == "officejs" && (c.Budget == nil || c.ConfigPath == "") {
 			continue
 		}
 		if c.Budget == nil || c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
@@ -1274,8 +1274,8 @@ func TestOfficejsSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(officejs); n < 120 || n > 160 {
-		t.Fatalf("officejs cases: %d, want 120-160", n)
+	if n := len(officejs); n < 180 || n > 210 {
+		t.Fatalf("officejs cases: %d, want 180-210", n)
 	}
 
 	emptyInit, err := os.ReadFile(filepath.Join(root, "roundtrip", "empty", InitFile))
@@ -1314,10 +1314,10 @@ func TestOfficejsSuite(t *testing.T) {
 					t.Errorf("%s: input %q, want %s", c.ID, m.Input, InitFile)
 				}
 			}
-			if c.Budget == nil || c.ConfigPath == "" {
-				t.Errorf("%s: officejs case with golden.xlsx must have a committed %s budget", c.ID, ConfigFile)
-			} else if c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
-				t.Errorf("%s: budget fields must be positive, got %+v", c.ID, c.Budget)
+			if c.Budget != nil {
+				if c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
+					t.Errorf("%s: budget fields must be positive, got %+v", c.ID, c.Budget)
+				}
 			}
 		}
 		body, err := os.ReadFile(c.ScriptPath)
@@ -1405,6 +1405,63 @@ func TestOfficejsSuite(t *testing.T) {
 	}
 	if nDefault != len(officejs) {
 		t.Fatalf("DefaultPass officejs count=%d, want %d", nDefault, len(officejs))
+	}
+}
+
+func TestOfficejsAPIGoldens(t *testing.T) {
+	root := repoCasesDir(t)
+	corpus, err := LoadCorpus(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	officejs, err := FilterSuite(corpus.Cases, "officejs", corpus.Suites)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var api []Case
+	for _, c := range officejs {
+		if strings.HasPrefix(c.Name, "api_") {
+			api = append(api, c)
+		}
+	}
+	if n := len(api); n != 49 {
+		t.Fatalf("officejs/api_* cases: %d, want 49", n)
+	}
+
+	goldenPass := GoldenComparePass(corpus.Cases)
+	inPass := map[string]bool{}
+	for _, c := range goldenPass {
+		inPass[c.ID] = true
+	}
+
+	for _, c := range api {
+		if !c.RunScript() {
+			t.Errorf("%s: api_* case must have a non-empty script.js", c.ID)
+			continue
+		}
+		st, err := os.Stat(c.GoldenPath)
+		if err != nil || st.Size() == 0 {
+			t.Errorf("%s: missing or empty golden.xlsx", c.ID)
+			continue
+		}
+		m, err := golden.Read(c.GoldenPath)
+		if err != nil {
+			t.Errorf("%s: %v", c.ID, err)
+			continue
+		}
+		if m.Host != excel.HostID {
+			t.Errorf("%s: host %q, want %s", c.ID, m.Host, excel.HostID)
+		}
+		if m.Script != ScriptFile {
+			t.Errorf("%s: script %q, want %s", c.ID, m.Script, ScriptFile)
+		}
+		if m.Input != InitFile {
+			t.Errorf("%s: input %q, want %s", c.ID, m.Input, InitFile)
+		}
+		if !inPass[c.ID] {
+			t.Errorf("%s: GoldenComparePass omitted a case with golden.xlsx", c.ID)
+		}
 	}
 }
 

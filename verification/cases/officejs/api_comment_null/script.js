@@ -6,7 +6,7 @@ await Excel.run(async (context) => {
   const comments = context.workbook.comments;
   const first = comments.add(sheet.getRange("B2"), "root");
   let output;
-  const found = comments.getItemOrNullObject("missing-comment"); await context.sync(); output = found.isNullObject;
+  const found = comments.getItemOrNullObject("{00000000-0000-0000-0000-000000000000}"); await context.sync(); output = found.isNullObject;
   sheet.getRange("D1").values = [[output]];
   // Remove threads after recording results so author and timestamp metadata
   // do not make the workbook comparison depend on the Windows account.
