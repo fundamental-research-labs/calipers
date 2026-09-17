@@ -216,6 +216,10 @@ func readFill(dec *xml.Decoder, theme map[string]string) string {
 			bg = resolveColor(se, theme)
 		}
 	})
+	// A solid fill is painted entirely with fgColor; bgColor is unused.
+	if pat == "solid" {
+		bg = ""
+	}
 	return strings.Join([]string{pat, fg, bg}, ",")
 }
 
@@ -277,7 +281,7 @@ func walkDepth(dec *xml.Decoder, start func(xml.StartElement), end func(string))
 
 func resolveColor(se xml.StartElement, theme map[string]string) string {
 	if rgb := attr(se, "rgb"); rgb != "" {
-		return strings.ToUpper(rgb)
+		return canonicalColor(rgb, attr(se, "tint"))
 	}
 	if th := attr(se, "theme"); th != "" {
 		i, _ := strconv.Atoi(th)
@@ -289,10 +293,7 @@ func resolveColor(se xml.StartElement, theme map[string]string) string {
 		if rgb == "" {
 			rgb = "theme:" + th
 		}
-		if tint := attr(se, "tint"); tint != "" {
-			return rgb + "@" + normalizeTint(tint)
-		}
-		return rgb
+		return canonicalColor(rgb, attr(se, "tint"))
 	}
 	if ix := attr(se, "indexed"); ix != "" {
 		return "indexed:" + ix

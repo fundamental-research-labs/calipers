@@ -26,8 +26,8 @@ func TestCompareFillBgColorException(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Equal || !hasAxis(got, "styles", "Sheet1!A1") {
-		t.Fatalf("without exception want styles mismatch, got %v", got.Diffs)
+	if !got.Equal {
+		t.Fatalf("solid fill backgrounds do not affect appearance, got %v", got.Diffs)
 	}
 
 	changed := solidFillXLSX(t, "")
