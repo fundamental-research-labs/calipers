@@ -754,8 +754,8 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if n := len(all); n < 276 || n > 316 {
-		t.Fatalf("real corpus: got %d cases, want 276-316 (103 existing + 180-210 officejs)", n)
+	if n := len(all); n < 326 || n > 366 {
+		t.Fatalf("real corpus: got %d cases, want 326-366 (103 existing + 230-260 officejs)", n)
 	}
 	wantSuites := "default,officejs,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
@@ -842,8 +842,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	if nRT != 83 || nDef != 5 || nScratch != 15 {
 		t.Fatalf("suite counts roundtrip=%d default=%d scratch=%d, want 83/5/15", nRT, nDef, nScratch)
 	}
-	if nOfficejs < 180 || nOfficejs > 210 {
-		t.Fatalf("officejs cases: %d, want 180-210", nOfficejs)
+	if nOfficejs < 230 || nOfficejs > 260 {
+		t.Fatalf("officejs cases: %d, want 230-260", nOfficejs)
 	}
 	if len(all) != nRT+nDef+nScratch+nOfficejs {
 		t.Fatalf("suite counts do not sum to corpus len %d", len(all))
@@ -1274,8 +1274,8 @@ func TestOfficejsSuite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(officejs); n < 180 || n > 210 {
-		t.Fatalf("officejs cases: %d, want 180-210", n)
+	if n := len(officejs); n < 230 || n > 260 {
+		t.Fatalf("officejs cases: %d, want 230-260", n)
 	}
 
 	emptyInit, err := os.ReadFile(filepath.Join(root, "roundtrip", "empty", InitFile))
@@ -1420,13 +1420,20 @@ func TestOfficejsAPIGoldens(t *testing.T) {
 	}
 
 	var api []Case
+	var apiFn []Case
 	for _, c := range officejs {
 		if strings.HasPrefix(c.Name, "api_") {
 			api = append(api, c)
 		}
+		if strings.HasPrefix(c.Name, "api_function_") {
+			apiFn = append(apiFn, c)
+		}
 	}
-	if n := len(api); n != 49 {
-		t.Fatalf("officejs/api_* cases: %d, want 49", n)
+	if n := len(api); n != 99 {
+		t.Fatalf("officejs/api_* cases: %d, want 99 (49 original + 50 api_function_*)", n)
+	}
+	if n := len(apiFn); n != 50 {
+		t.Fatalf("officejs/api_function_* cases: %d, want 50", n)
 	}
 
 	goldenPass := GoldenComparePass(corpus.Cases)
