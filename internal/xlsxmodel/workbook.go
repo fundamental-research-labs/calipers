@@ -64,7 +64,8 @@ const (
 )
 
 // Value is a resolved cell: type, value, and formula text (if any).
-// Numbers compare as IEEE-754 binary64. Formula is shared-expanded A1 text.
+// Numbers compare as IEEE-754 binary64, or as equal when they agree at
+// Excel's 15 significant digits. Formula is shared-expanded A1 text.
 type Value struct {
 	Type    CellType
 	F       float64
@@ -389,6 +390,17 @@ func freezeDiffs(a, b map[string]Freeze) []Diff {
 	return diffs
 }
 
+func numbersEqual(a, b float64) bool {
+	if math.Float64bits(a) == math.Float64bits(b) {
+		return true
+	}
+	return excelSig15(a) == excelSig15(b)
+}
+
+func excelSig15(f float64) string {
+	return strconv.FormatFloat(f, 'g', 15, 64)
+}
+
 func formulaKey(v Value) string {
 	if v.FKind == "" && v.FRef == "" {
 		return v.Formula
@@ -407,7 +419,7 @@ func valueDiff(loc string, a, b Value, ctx compareCtx) *Diff {
 		return nil
 	}
 	if a.Type == TypeNumber && b.Type == TypeNumber {
-		if math.Float64bits(a.F) == math.Float64bits(b.F) {
+		if numbersEqual(a.F, b.F) {
 			return nil
 		}
 		return &Diff{Axis: "values", Location: loc, Detail: fmt.Sprintf("expected %s got %s", b.S, a.S)}

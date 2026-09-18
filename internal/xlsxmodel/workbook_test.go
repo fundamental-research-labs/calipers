@@ -30,6 +30,48 @@ func TestCompareEqualOnBinary64FloatText(t *testing.T) {
 	t.Log("equal: sheet cell 92.3 vs 92.299999999999997")
 }
 
+func TestCompareEqualOnExcel15SignificantDigits(t *testing.T) {
+	ieee := numberXLSX(t, "3.141592653589793")
+	excel15 := numberXLSX(t, "3.14159265358979")
+	got, err := Compare(ieee, excel15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("IEEE PI vs Excel 15-digit PI must be equal, got %v", got.Diffs)
+	}
+	acosIEEE := numberXLSX(t, "1.047197551196598")
+	acosExcel := numberXLSX(t, "1.0471975511966001")
+	got, err = Compare(acosIEEE, acosExcel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal {
+		t.Fatalf("IEEE ACOS(0.5) vs Excel 15-digit text must be equal, got %v", got.Diffs)
+	}
+}
+
+func TestCompareUnequalOnDistinctNumbers(t *testing.T) {
+	one := numberXLSX(t, "1")
+	two := numberXLSX(t, "2")
+	got, err := Compare(one, two)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Equal {
+		t.Fatal("1 vs 2 must be unequal")
+	}
+	found := false
+	for _, d := range got.Diffs {
+		if d.Axis == "values" && d.Location == "Sheet1!A1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want values Sheet1!A1, got %v", got.Diffs)
+	}
+}
+
 func TestCompareUnequalOnCellString(t *testing.T) {
 	a := mustXLSX(t, map[string]string{
 		"xl/workbook.xml":          workbookXML("0"),
