@@ -136,6 +136,20 @@ await Excel.run(async (context) => {
     [1, 2],
     [3, 4],
   ];`),
+		sheetJS("sheet_used_range", "officejs: write via Worksheet.getUsedRange.", `  sheet.getRange("B2").values = [["x"]];
+  sheet.getRange("D4").values = [["y"]];
+  sheet.getUsedRange().values = [
+    ["a", "b", "c"],
+    ["d", "e", "f"],
+    ["g", "h", "i"],
+  ];`),
+		sheetJS("range_used_range", "officejs: write via Range.getUsedRange.", `  sheet.getRange("B2").values = [["x"]];
+  sheet.getRange("D4").values = [["y"]];
+  sheet.getRange("A1:Z20").getUsedRange().values = [
+    ["a", "b", "c"],
+    ["d", "e", "f"],
+    ["g", "h", "i"],
+  ];`),
 		sheetJS("range_unmerge", "officejs: merge a block then unmerge it.", `  sheet.getRange("A1").values = [["merged"]];
   sheet.getRange("A1:B2").merge();
   sheet.getRange("A1:B2").unmerge();

@@ -130,6 +130,8 @@ var uncoveredMogMethodNeedles = []string{
 	"getColumnsAfter(",
 	"getBoundingRect(",
 	"getIntersection(",
+	"sheet.getUsedRange(",
+	"getRange(\"A1:Z20\").getUsedRange(",
 	".unmerge(",
 	"format.fill.clear",
 	".activate(",
