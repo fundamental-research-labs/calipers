@@ -39,6 +39,7 @@ func allSpecs() []spec {
 	out = append(out, commentExpansionSpecs()...)
 	out = append(out, conditionalExpansionSpecs()...)
 	out = append(out, rangeQueryExpansionSpecs()...)
+	out = append(out, functionSpecs()...)
 	return out
 }
 

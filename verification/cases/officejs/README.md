@@ -1,10 +1,10 @@
 # officejs (blank-init Office.js)
 
-144 cases that start from a **blank XLSX** (byte copy of
+243 cases that start from a **blank XLSX** (byte copy of
 [`../roundtrip/empty/init.xlsx`](../roundtrip/empty/init.xlsx)) and run one
 `await Excel.run(...)` script. This is added coverage next to the 15
 [`scratch/`](../scratch/) cases; those keep their committed goldens.
-The original 100 cases have committed `excel-run` goldens; 44 newer
+193 cases have committed `excel-run` goldens; the 50 new `api_function_*`
 cases are pending Windows `excel-run-pass` (`verify` skips a missing
 golden).
 
@@ -35,3 +35,9 @@ worksheets, names, conditional formatting, validation, autofilter,
 freeze, comments, hyperlinks, sort, insert/delete, and leftover
 collection lookups (`getCount`, `getItem` / `getItemAt` / `get*OrNullObject`,
 `getRange`).
+
+The 50 `api_function_*` cases exercise `workbook.functions` arithmetic,
+trigonometry, aggregation, and text methods. Each writes primary and boundary
+results (including worksheet errors) into `D1:F3`. Their source is
+`scripts/gen-officejs-cases/specs_functions.go`. Goldens and performance
+budgets for these cases must be generated with Excel.

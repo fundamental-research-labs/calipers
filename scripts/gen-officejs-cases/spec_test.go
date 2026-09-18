@@ -9,8 +9,8 @@ import (
 
 func TestSpecsCountUniqueAndOfficeJS(t *testing.T) {
 	specs := allSpecs()
-	if n := len(specs); n != 193 {
-		t.Fatalf("spec count %d, want 193", n)
+	if n := len(specs); n != 243 {
+		t.Fatalf("spec count %d, want 243", n)
 	}
 	seen := map[string]bool{}
 	joined := strings.Builder{}
