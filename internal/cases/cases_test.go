@@ -927,11 +927,8 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("pending golden %s: only new officejs cases may lack goldens", id)
 		}
 	}
-	uncapped := MissingBudget(all)
-	for _, c := range uncapped {
-		if c.Suite != "officejs" {
-			t.Errorf("missing budget %s: only officejs cases may lack config.json", c.ID)
-		}
+	for _, c := range MissingBudget(all) {
+		t.Errorf("missing budget %s: config.json is required", c.ID)
 	}
 	pendingSet := map[string]bool{}
 	for _, id := range pending {
@@ -939,9 +936,6 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	for _, c := range all {
 		if pendingSet[c.ID] {
-			continue
-		}
-		if c.Suite == "officejs" && (c.Budget == nil || c.ConfigPath == "") {
 			continue
 		}
 		if c.Budget == nil || c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
@@ -1314,10 +1308,8 @@ func TestOfficejsSuite(t *testing.T) {
 					t.Errorf("%s: input %q, want %s", c.ID, m.Input, InitFile)
 				}
 			}
-			if c.Budget != nil {
-				if c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
-					t.Errorf("%s: budget fields must be positive, got %+v", c.ID, c.Budget)
-				}
+			if c.Budget == nil || c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
+				t.Errorf("%s: budget fields must be positive, got %+v", c.ID, c.Budget)
 			}
 		}
 		body, err := os.ReadFile(c.ScriptPath)

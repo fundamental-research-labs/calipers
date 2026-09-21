@@ -4,9 +4,8 @@
 [`../roundtrip/empty/init.xlsx`](../roundtrip/empty/init.xlsx)) and run one
 `await Excel.run(...)` script. This is added coverage next to the 15
 [`scratch/`](../scratch/) cases; those keep their committed goldens.
-193 cases have committed `excel-run` goldens; the 50 new `api_function_*`
-cases are pending Windows `excel-run-pass` (`verify` skips a missing
-golden).
+All 243 cases have committed `excel-run` goldens and `config.json`
+budgets (`maxPeakMemoryBytes`, `maxDurationMs`).
 
 Committed `golden.xlsx` files come from Windows + Excel
 (`excel-run-pass`). To regenerate:
@@ -39,5 +38,5 @@ collection lookups (`getCount`, `getItem` / `getItemAt` / `get*OrNullObject`,
 The 50 `api_function_*` cases exercise `workbook.functions` arithmetic,
 trigonometry, aggregation, and text methods. Each writes primary and boundary
 results (including worksheet errors) into `D1:F3`. Their source is
-`scripts/gen-officejs-cases/specs_functions.go`. Goldens and performance
-budgets for these cases must be generated with Excel.
+`scripts/gen-officejs-cases/specs_functions.go`. Goldens come from
+`excel-run-pass`; budgets come from `measure-budgets`.
