@@ -27,7 +27,7 @@ Each case directory:
 |------|------|
 | `init.xlsx` | Required input workbook |
 | `script.js` | Optional Office.js. Missing or empty → load+save only (skip script execution) |
-| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (unscripted cases), `simple_set_a1` (`excel-run`), `scratch/` (`excel-run`), and the original 100 `officejs/` cases (`excel-run`). New officejs cases are pending Windows `excel-run-pass`. |
+| `golden.xlsx` | Excel-win oracle. Committed for the default open+save pass (unscripted cases), `simple_set_a1` (`excel-run`), `scratch/` (`excel-run`), and every `officejs/` case (`excel-run`). |
 | `golden.xlsx.meta.json` | Sidecar (`host=excel-win`, Excel version/build, init; load+save omits `script`; `excel-run` records `script.js`) |
 | `config.json` | Optional. Lives at the cases root, a suite directory, and/or the case directory (child scalar fields override; compare exceptions union). `maxPeakMemoryBytes` / `maxDurationMs` budgets, plus optional `compare.ignore` / `compare.cells` (inclusive numeric range per `Sheet!A1`). Missing file is a no-op. Case-level budgets are written by Windows `measure-budgets` without erasing other keys. |
 
@@ -35,7 +35,7 @@ Do not mix goldens into a flat init dump. Do not plant a dummy `script.js` on lo
 
 Office.js corpus: `default/simple_set_a1/` copies the `roundtrip/simple` init and sets A1 to `calipers` (`excel-run` golden is committed). `roundtrip/simple/` stays load+save only. `scratch/` cases copy `roundtrip/empty/init.xlsx` and each run one Office.js feature (tables, charts, pivot, spill, CF, basic Excel). Scratch goldens are committed from `excel-run`; `excel-save-pass` still skips them because they are scripted. The default `verify` walk includes scratch once those goldens exist.
 
-`officejs/` is a larger blank-init Office.js suite (tables, pivots, charts, spill, styles, small and large writes, worksheets, names, CF, validation, autofilter, comments, hyperlinks, sort, insert, range navigators, freeze, table mutators, collection lookups, NullObject/getCount/getRange variants). Scripts are generated from `scripts/gen-officejs-cases`. Goldens for the original 100 cases are committed from Windows `excel-run-pass`; `config.json` budgets from Windows `measure-budgets`. Newly added cases ship without goldens until a Windows `excel-run-pass`.
+`officejs/` is a larger blank-init Office.js suite (tables, pivots, charts, spill, styles, small and large writes, worksheets, names, CF, validation, autofilter, comments, hyperlinks, sort, insert, range navigators, freeze, table mutators, collection lookups, NullObject/getCount/getRange variants, workbook functions). Scripts are generated from `scripts/gen-officejs-cases`. Goldens are committed from Windows `excel-run-pass`, and every case has a `config.json` budget from Windows `measure-budgets`.
 
 Original source names are preserved in the tables below.
 
