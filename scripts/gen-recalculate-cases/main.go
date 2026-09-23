@@ -125,7 +125,9 @@ func workbook(s spec) ([]byte, error) {
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		w, err := zw.Create(n)
+		// Store these tiny parts verbatim so fixtures are stable across Go
+		// releases with different DEFLATE implementations.
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: n, Method: zip.Store})
 		if err != nil {
 			return nil, err
 		}
