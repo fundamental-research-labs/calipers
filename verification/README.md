@@ -105,3 +105,14 @@ go build -o calipers ./cmd/calipers
 ./calipers bench --engine /path/to/mog --json bench.json --report ./report   # Mog-only preview
 ./calipers bench-report --json bench.json --out ./report
 ```
+
+## Cache-free recalculation cases
+
+[`cases/recalculate`](cases/recalculate/README.md) is the load → full recalc → save
+suite. Its synthetic inputs intentionally bypass the Excel-export fingerprint
+requirement so formula caches remain absent. `config.json` accepts an inherited
+boolean `recalculate` (default false; child values override parents), alongside
+the existing memory/duration budgets and comparison settings. This policy is
+supported for unscripted cases and applies in verify, excel-save-pass, bench, and
+measure-budgets. Goldens still come exclusively from Windows Excel and record
+`recalculate: true` in their sidecars. The suite README covers capture and checks.

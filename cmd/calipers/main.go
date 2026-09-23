@@ -165,12 +165,12 @@ func excelRun(inputPath, scriptPath, outputPath string) error {
 // generateGolden is the single Excel-win golden path: open the init, run
 // Office.js when scriptPath is non-empty, Save As, write sidecar.
 func generateGolden(host excel.Host, inputPath, scriptPath, outputPath string) error {
-	var err error
-	if scriptPath != "" {
-		err = host.RunScript(inputPath, scriptPath, outputPath)
-	} else {
-		err = host.OpenSave(inputPath, outputPath)
-	}
+	return generateCaseGolden(host, cases.Case{InitPath: inputPath, ScriptPath: scriptPath, GoldenPath: outputPath})
+}
+
+func generateCaseGolden(host excel.Host, c cases.Case) error {
+	inputPath, scriptPath, outputPath := c.InitPath, c.ScriptPath, c.GoldenPath
+	err := executeCase(host, c, outputPath)
 	if err != nil {
 		return err
 	}
@@ -182,6 +182,7 @@ func generateGolden(host excel.Host, inputPath, scriptPath, outputPath string) e
 		return fmt.Errorf("refuse golden host %q (want %s)", info.ID, excel.HostID)
 	}
 	meta := sidecarMeta(info, inputPath, scriptPath)
+	meta.Recalculate = c.Recalculate
 	if err := golden.Write(outputPath, meta); err != nil {
 		return err
 	}

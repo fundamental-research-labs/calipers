@@ -90,3 +90,27 @@ func TestBudgetFromSample(t *testing.T) {
 		t.Fatalf("duration budget %d, want at least 1.5x 2000ms", b.MaxDurationMs)
 	}
 }
+
+func TestBinaryBudgetRunnerHonorsCaseRecalculation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "engine")
+	// A plain save or a misplaced flag must fail, so this covers the real child argv.
+	script := "#!/bin/sh\n[ \"$1\" = save ] && [ \"$2\" = --recalculate ] || exit 2\ncp \"$3\" \"$4\"\n"
+	if err := os.WriteFile(bin, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	in := filepath.Join(dir, "init.xlsx")
+	if err := os.WriteFile(in, []byte("pk"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	run, err := budgetRunner(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(cases.Case{InitPath: in, Recalculate: true}); err != nil {
+		t.Fatal(err)
+	}
+}

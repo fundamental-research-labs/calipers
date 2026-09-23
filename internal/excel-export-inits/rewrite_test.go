@@ -297,3 +297,20 @@ func mustRead(t *testing.T, path string) []byte {
 	}
 	return b
 }
+
+func TestRewritePreservesCacheFreeInputs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "init.xlsx")
+	original := []byte("cache-free input")
+	if err := os.WriteFile(path, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+	h := &fakeHost{available: true}
+	if err := rewriteInits(h, []cases.Case{{ID: "recalculate/test", InitPath: path, Recalculate: true}}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, original) || len(h.calls) != 0 {
+		t.Fatalf("input was rewritten: calls=%v err=%v", h.calls, err)
+	}
+}

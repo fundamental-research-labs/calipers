@@ -12,8 +12,9 @@ import (
 )
 
 type resolved struct {
-	Budget  Budget
-	Compare xlsxmodel.Options
+	Recalculate bool
+	Budget      Budget
+	Compare     xlsxmodel.Options
 }
 
 func resolveConfig(root, caseDir string) (resolved, string, error) {
@@ -81,6 +82,12 @@ func mergeConfigFile(acc *resolved, path string) (bool, error) {
 			return false, fmt.Errorf("%s: negative budget", ConfigFile)
 		}
 		acc.Budget.MaxDurationMs = n
+	}
+	if v, ok := raw["recalculate"]; ok {
+		if string(v) != "true" && string(v) != "false" {
+			return false, fmt.Errorf("%s: recalculate must be a boolean", path)
+		}
+		acc.Recalculate = string(v) == "true"
 	}
 	if v, ok := raw["compare"]; ok {
 		var child xlsxmodel.Options

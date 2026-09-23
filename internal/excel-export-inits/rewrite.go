@@ -30,6 +30,15 @@ func rewriteInits(host excel.Host, loaded []cases.Case, w io.Writer) error {
 		return fmt.Errorf("no cases loaded")
 	}
 
+	var rewrite []cases.Case
+	for _, c := range loaded {
+		if c.Recalculate {
+			fmt.Fprintf(w, "skip %s (preserve cache-free recalculation input)\n", c.ID)
+			continue
+		}
+		rewrite = append(rewrite, c)
+	}
+	loaded = rewrite
 	groups, err := groupInits(loaded)
 	if err != nil {
 		return err

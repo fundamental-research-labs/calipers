@@ -14,6 +14,10 @@ func (stubHost) OpenSave(_, _ string) error {
 	return ErrNotWindows
 }
 
+func (stubHost) RecalculateOpenSave(_, _ string) error {
+	return ErrNotWindows
+}
+
 func (stubHost) RunScript(_, _, _ string) error {
 	return ErrNotWindows
 }

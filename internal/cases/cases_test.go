@@ -757,7 +757,7 @@ func TestLoadRealCorpus(t *testing.T) {
 	if n := len(all); n < 326 || n > 366 {
 		t.Fatalf("real corpus: got %d cases, want 326-366 (103 existing + 230-260 officejs)", n)
 	}
-	wantSuites := "default,officejs,roundtrip,scratch"
+	wantSuites := "default,officejs,recalculate,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
 		t.Fatalf("real corpus suites=%v, want %s", corpus.Suites, wantSuites)
 	}
@@ -796,9 +796,14 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("case %s must live under a suite directory, not %s", e.Name(), DirName)
 		}
 	}
-	var nRT, nDef, nScratch, nOfficejs int
+	var nRT, nDef, nScratch, nOfficejs, nRecalculate int
 	for _, c := range all {
 		switch c.Suite {
+		case "recalculate":
+			nRecalculate++
+			if !c.Recalculate || c.RunScript() {
+				t.Errorf("%s: expected unscripted recalculation", c.ID)
+			}
 		case "roundtrip":
 			nRT++
 			if c.RunScript() {
@@ -845,7 +850,7 @@ func TestLoadRealCorpus(t *testing.T) {
 	if nOfficejs < 230 || nOfficejs > 260 {
 		t.Fatalf("officejs cases: %d, want 230-260", nOfficejs)
 	}
-	if len(all) != nRT+nDef+nScratch+nOfficejs {
+	if len(all) != nRT+nDef+nScratch+nOfficejs+nRecalculate {
 		t.Fatalf("suite counts do not sum to corpus len %d", len(all))
 	}
 
@@ -923,14 +928,14 @@ func TestLoadRealCorpus(t *testing.T) {
 	goldenPass := GoldenComparePass(all)
 	pending := pendingGoldenIDs(all)
 	for _, id := range pending {
-		if !strings.HasPrefix(id, "officejs/") {
-			t.Errorf("pending golden %s: only new officejs cases may lack goldens", id)
+		if !strings.HasPrefix(id, "officejs/") && !strings.HasPrefix(id, "recalculate/") {
+			t.Errorf("pending golden %s: only new officejs/recalculate cases may lack goldens", id)
 		}
 	}
 	uncapped := MissingBudget(all)
 	for _, c := range uncapped {
-		if c.Suite != "officejs" {
-			t.Errorf("missing budget %s: only officejs cases may lack config.json", c.ID)
+		if c.Suite != "officejs" && c.Suite != "recalculate" {
+			t.Errorf("missing budget %s: only officejs/recalculate cases may lack config.json", c.ID)
 		}
 	}
 	pendingSet := map[string]bool{}
@@ -1003,6 +1008,11 @@ func TestCommittedInitsAreWindowsExcel16Exports(t *testing.T) {
 		t.Fatal("no cases loaded")
 	}
 	for _, c := range all {
+		// Recalculation inputs must retain absent caches, so they are synthetic.
+		// Their ZIP/formula invariants are checked by gen-recalculate-cases.
+		if c.Suite == "recalculate" {
+			continue
+		}
 		if err := excel.CheckWindowsExcel16Export(c.InitPath); err != nil {
 			t.Errorf("%s: %v", c.ID, err)
 		}
@@ -1018,7 +1028,11 @@ func TestCommittedOpenSaveGoldens(t *testing.T) {
 
 	var first golden.Meta
 	var firstID string
-	for i, c := range OpenSavePass(all) {
+	for _, c := range OpenSavePass(all) {
+		// New recalculation goldens are captured independently on Windows.
+		if c.Suite == "recalculate" {
+			continue
+		}
 		st, err := os.Stat(c.GoldenPath)
 		if err != nil {
 			t.Errorf("%s: missing golden.xlsx", c.ID)
@@ -1044,7 +1058,7 @@ func TestCommittedOpenSaveGoldens(t *testing.T) {
 		if m.ExcelVersion == "" || m.ExcelBuild == "" {
 			t.Errorf("%s: missing Excel version/build in meta", c.ID)
 		}
-		if i == 0 {
+		if firstID == "" {
 			first = m
 			firstID = c.ID
 			continue
@@ -1628,4 +1642,48 @@ func repoCasesDir(t *testing.T) string {
 		t.Fatalf("corpus %s: %v", abs, err)
 	}
 	return abs
+}
+
+func TestRecalculateConfigCascade(t *testing.T) {
+	root := t.TempDir()
+	writeCase(t, filepath.Join(root, "suite"), "inherited", "pk", nil)
+	writeCase(t, filepath.Join(root, "suite"), "override", "pk", nil)
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{"recalculate":true,"maxPeakMemoryBytes":1234}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	local := filepath.Join(root, "suite", "override", "config.json")
+	if err := os.WriteFile(local, []byte(`{"recalculate":false}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	all, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !all[0].Recalculate || all[1].Recalculate || all[0].Budget.MaxPeakMemoryBytes != 1234 {
+		t.Fatalf("bad inheritance: %+v", all)
+	}
+	if err := WriteBudget(all[1].Dir, Budget{MaxPeakMemoryBytes: 5678}); err != nil {
+		t.Fatal(err)
+	}
+	all, err = Load(root)
+	if err != nil || all[1].Recalculate {
+		t.Fatalf("budget write changed policy: %v", err)
+	}
+	for _, invalid := range []string{`"true"`, `1`, `null`} {
+		if err := os.WriteFile(local, []byte(`{"recalculate":`+invalid+`}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(root); err == nil {
+			t.Fatalf("accepted recalculate=%s", invalid)
+		}
+	}
+	if err := os.WriteFile(local, []byte(`{"recalculate":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "suite", "override", "script.js"), []byte("script"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(root); err == nil {
+		t.Fatal("accepted scripted recalculation case")
+	}
 }

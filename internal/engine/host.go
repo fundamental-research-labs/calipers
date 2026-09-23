@@ -59,6 +59,14 @@ func (h *Host) OpenSave(inputPath, outputPath string) error {
 	return wrote(out)
 }
 
+// RecalculateOpenSave requires a full recalculation without changing this host's
+// default policy for subsequent cases.
+func (h *Host) RecalculateOpenSave(inputPath, outputPath string) error {
+	copy := *h
+	copy.Recalculate = true
+	return copy.OpenSave(inputPath, outputPath)
+}
+
 // RunScript runs: engine run <input> <script> <output>
 func (h *Host) RunScript(inputPath, scriptPath, outputPath string) error {
 	if strings.TrimSpace(scriptPath) == "" {

@@ -45,6 +45,13 @@ type Host interface {
 	Available() bool
 }
 
+// RecalculatingHost explicitly rebuilds dependencies and calculates before saving.
+// NewHost implements this optional operation on both platforms.
+type RecalculatingHost interface {
+	Host
+	RecalculateOpenSave(inputPath, outputPath string) error
+}
+
 // NewHost returns the platform Excel host.
 func NewHost() Host {
 	return newPlatformHost()

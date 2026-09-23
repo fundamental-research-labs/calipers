@@ -362,7 +362,7 @@ func TestVerifyCLIRecalculatePolicy(t *testing.T) {
 			if err != nil || readErr != nil || !called {
 				t.Fatalf("CLI error = %v, read error = %v, host constructed = %v", err, readErr, called)
 			}
-			policy := "host default (no recalculation requested)"
+			policy := "case config (otherwise host policy)"
 			if want {
 				policy = "recalculate before export (external engine --recalculate)"
 			}
@@ -547,7 +547,7 @@ func TestRunVerifyCLISuiteFlag(t *testing.T) {
 	if !strings.Contains(out, "roundtrip/rt") {
 		t.Fatalf("output = %s", out)
 	}
-	if strings.Contains(out, "other") {
+	if strings.Contains(out, "default/other") {
 		t.Fatalf("--suite must not run other suites:\n%s", out)
 	}
 }

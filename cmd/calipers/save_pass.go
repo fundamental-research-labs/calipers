@@ -36,7 +36,7 @@ func excelSavePass(root string) error {
 	failed := map[string]error{}
 	for i, c := range targets {
 		printf("[%d/%d] %s\n", i+1, len(targets), c.ID)
-		if err := generateGolden(host, c.InitPath, c.ScriptPath, c.GoldenPath); err != nil {
+		if err := generateCaseGolden(host, c); err != nil {
 			fmt.Fprintf(os.Stderr, "calipers: %s: %v\n", c.ID, err)
 			_ = os.Stderr.Sync()
 			failed[c.ID] = err
