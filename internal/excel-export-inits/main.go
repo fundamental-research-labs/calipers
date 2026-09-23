@@ -55,7 +55,8 @@ Usage:
 
 Opens each unique loaded init.xlsx in Excel and Save As xlsx format 51 to a
 temp path, then replaces the inits. Identical files are exported once and
-copied. Default cases-dir is verification/cases.
+copied. Cases requiring recalculation are skipped to preserve cache-free inputs.
+Default cases-dir is verification/cases.
 
 Requires Windows + Microsoft Excel. Off Windows this errors:
   excel-save requires Windows + Excel (COM)

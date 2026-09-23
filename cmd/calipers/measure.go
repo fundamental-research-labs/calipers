@@ -192,6 +192,9 @@ func budgetRunner(engineSpec string) (caseRunner, error) {
 			if c.RunScript() {
 				args = []string{"run", c.InitPath, c.ScriptPath, outPath}
 			}
+			if c.Recalculate {
+				args = append([]string{args[0], "--recalculate"}, args[1:]...)
+			}
 			return measureChild(abs, args)
 		}, nil
 	}
@@ -219,12 +222,7 @@ func measureExcel(host excel.Host, c cases.Case, outPath string) (memSample, err
 		}
 	}()
 	start := time.Now()
-	var err error
-	if c.RunScript() {
-		err = host.RunScript(c.InitPath, c.ScriptPath, outPath)
-	} else {
-		err = host.OpenSave(c.InitPath, outPath)
-	}
+	err := executeCase(host, c, outPath)
 	sample := memSample{peakBytes: peak.Load(), duration: time.Since(start)}
 	cancel()
 	<-done

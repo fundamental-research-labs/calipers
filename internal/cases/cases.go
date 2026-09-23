@@ -50,16 +50,17 @@ type Budget struct {
 
 // Case is one verification case: init workbook, optional Office.js, golden dest.
 type Case struct {
-	ID         string // suite/name, e.g. "roundtrip/simple"; name only in a flat layout
-	Name       string // case directory name, e.g. "simple"
-	Suite      string // suite directory, e.g. "roundtrip"; empty in a flat layout
-	Dir        string
-	InitPath   string
-	ScriptPath string            // non-empty only when a script should run
-	GoldenPath string            // destination; may not exist yet
-	ConfigPath string            // local config.json if present
-	Budget     *Budget           // resolved; nil when no budget at any level
-	Compare    xlsxmodel.Options // resolved compare exceptions + cell ranges
+	Recalculate bool   // require load + full recalculation + save (unscripted cases)
+	ID          string // suite/name, e.g. "roundtrip/simple"; name only in a flat layout
+	Name        string // case directory name, e.g. "simple"
+	Suite       string // suite directory, e.g. "roundtrip"; empty in a flat layout
+	Dir         string
+	InitPath    string
+	ScriptPath  string            // non-empty only when a script should run
+	GoldenPath  string            // destination; may not exist yet
+	ConfigPath  string            // local config.json if present
+	Budget      *Budget           // resolved; nil when no budget at any level
+	Compare     xlsxmodel.Options // resolved compare exceptions + cell ranges
 }
 
 // RunScript reports whether this case has a non-empty Office.js file to execute.
@@ -313,17 +314,21 @@ func loadOne(root, dir, name, suite string) (Case, error) {
 	if err != nil {
 		return Case{}, fmt.Errorf("case %s: %w", id, err)
 	}
+	if cfg.Recalculate && scriptPath != "" {
+		return Case{}, fmt.Errorf("case %s: recalculate requires an unscripted case", id)
+	}
 	return Case{
-		ID:         id,
-		Name:       name,
-		Suite:      suite,
-		Dir:        dir,
-		InitPath:   initPath,
-		ScriptPath: scriptPath,
-		GoldenPath: filepath.Join(dir, GoldenFile),
-		ConfigPath: configPath,
-		Budget:     budgetPtr(cfg.Budget),
-		Compare:    cfg.Compare,
+		Recalculate: cfg.Recalculate,
+		ID:          id,
+		Name:        name,
+		Suite:       suite,
+		Dir:         dir,
+		InitPath:    initPath,
+		ScriptPath:  scriptPath,
+		GoldenPath:  filepath.Join(dir, GoldenFile),
+		ConfigPath:  configPath,
+		Budget:      budgetPtr(cfg.Budget),
+		Compare:     cfg.Compare,
 	}, nil
 }
 

@@ -12,6 +12,7 @@ const toolName = "calipers"
 
 // Meta is stored next to a golden xlsx as `<file>.xlsx.meta.json`.
 type Meta struct {
+	Recalculate  bool   `json:"recalculate,omitempty"`
 	Host         string `json:"host"`
 	ExcelVersion string `json:"excelVersion,omitempty"`
 	ExcelBuild   string `json:"excelBuild,omitempty"`

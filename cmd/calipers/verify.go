@@ -44,8 +44,8 @@ const verifyUsage = `calipers verify --engine <path|excel> [--recalculate] [--pa
                                       run  <in> <script.js> <out>
   --recalculate     request full recalculation before export by passing
                     --recalculate after save/run; requires engine support.
-                    Unsupported with --engine excel. Default: host policy
-                    (no recalculation requested).
+                    Unsupported with --engine excel. By default, case config
+                    controls recalculation (host policy when unset).
   --package         also print ZIP-package diffs (diagnostic only; does
                     not change PASS/FAIL)
   --suite NAME      run only this suite directory under --cases-dir
@@ -95,7 +95,7 @@ func verifyCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	policy := "host default (no recalculation requested)"
+	policy := "case config (otherwise host policy)"
 	if *recalculate {
 		policy = "recalculate before export (external engine --recalculate)"
 	}
@@ -230,12 +230,7 @@ func verifyOne(eng engine, c cases.Case, outDir string, packageDiag bool) caseOu
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: "refusing to overwrite golden"}
 	}
 
-	var err error
-	if c.RunScript() {
-		err = eng.RunScript(c.InitPath, c.ScriptPath, exportPath)
-	} else {
-		err = eng.OpenSave(c.InitPath, exportPath)
-	}
+	err := executeCase(eng, c, exportPath)
 	if err != nil {
 		return caseOutcome{ID: c.ID, Export: exportPath, Status: "error", Detail: err.Error()}
 	}

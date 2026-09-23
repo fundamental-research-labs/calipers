@@ -58,12 +58,20 @@ func (h *windowsHost) Info() (HostInfo, error) {
 }
 
 func (h *windowsHost) OpenSave(inputPath, outputPath string) error {
+	return h.openSave(inputPath, outputPath, false)
+}
+
+func (h *windowsHost) RecalculateOpenSave(inputPath, outputPath string) error {
+	return h.openSave(inputPath, outputPath, true)
+}
+
+func (h *windowsHost) openSave(inputPath, outputPath string, recalculate bool) error {
 	absIn, absOut, err := preparePaths(inputPath, outputPath)
 	if err != nil {
 		return err
 	}
 	info, err := runExcelSTA(DefaultTimeout, func(excel *ole.IDispatch) (HostInfo, error) {
-		return openSaveWithExcel(excel, absIn, absOut)
+		return openSaveWithExcel(excel, absIn, absOut, recalculate)
 	})
 	if err != nil {
 		return err
@@ -219,7 +227,7 @@ func withExcelApplication(pid *atomic.Uint32, job excelJob) (info HostInfo, err 
 	return job(excel)
 }
 
-func openSaveWithExcel(excel *ole.IDispatch, absIn, absOut string) (HostInfo, error) {
+func openSaveWithExcel(excel *ole.IDispatch, absIn, absOut string, recalculate bool) (HostInfo, error) {
 	info := readExcelInfo(excel)
 
 	wbProp, err := oleutil.GetProperty(excel, "Workbooks")
@@ -245,6 +253,12 @@ func openSaveWithExcel(excel *ole.IDispatch, absIn, absOut string) (HostInfo, er
 	defer func() {
 		_, _ = oleutil.CallMethod(wb, "Close", false)
 	}()
+
+	if recalculate {
+		if _, err := oleutil.CallMethod(excel, "CalculateFullRebuild"); err != nil {
+			return info, fmt.Errorf("Excel CalculateFullRebuild: %w", err)
+		}
+	}
 
 	if sameFilePath(absIn, absOut) {
 		if _, err := oleutil.CallMethod(wb, "Save"); err != nil {

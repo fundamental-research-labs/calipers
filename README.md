@@ -112,7 +112,17 @@ A successful run writes `golden.xlsx.meta.json` beside the xlsx (`host`, Excel v
 
 CI never runs Excel. A Windows machine with Excel generates goldens; those files are committed and compared later.
 
-`verify` prints the selected calculation policy. By default it leaves each host's policy unchanged. `--recalculate` passes `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>` to an external engine that supports this contract. The flag is rejected for the Excel host, whose calculation is not explicitly controlled. Recalculation does not make random, time-dependent, or environment-dependent results and their dependents equal previously captured goldens; those require controlled assertions.
+`verify` prints the selected calculation policy. By default it follows each case's `recalculate` config, leaving the host policy unchanged when unset. `--recalculate` passes `save --recalculate <in> <out>` or `run --recalculate <in> <script> <out>` to an external engine that supports this contract. The flag is rejected for the Excel host, whose calculation is not explicitly controlled. Recalculation does not make random, time-dependent, or environment-dependent results and their dependents equal previously captured goldens; those require controlled assertions.
+
+## Cache-free recalculation
+
+The [`recalculate` suite](verification/cases/recalculate/README.md) starts with
+synthetic XLSX inputs that have no formula-result caches. Inherited
+`"recalculate": true` in `config.json` requires full recalculation before save
+for Excel golden generation, verification, budgets, and benchmarks. Excel uses
+COM `CalculateFullRebuild`; external engines must support `save --recalculate`.
+The suite includes five regression cases for Mog #401. Goldens and measured
+budgets await Windows capture; see its README and `scripts/capture-recalculate.ps1`.
 
 ## Bench (Excel vs Mog speed and memory)
 

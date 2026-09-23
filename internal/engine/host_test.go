@@ -151,3 +151,28 @@ func TestRecalculateArgv(t *testing.T) {
 		})
 	}
 }
+
+func TestCaseRecalculateDoesNotChangeHostDefault(t *testing.T) {
+	dir := t.TempDir()
+	in, out := filepath.Join(dir, "in.xlsx"), filepath.Join(dir, "out.xlsx")
+	if err := os.WriteFile(in, []byte("pk"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	old := execCommandContext
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{}, args...))
+		return exec.CommandContext(ctx, "cp", in, out)
+	}
+	defer func() { execCommandContext = old }()
+	h := New("engine")
+	if err := h.RecalculateOpenSave(in, out); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.OpenSave(in, out); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(calls, [][]string{{"save", "--recalculate", in, out}, {"save", in, out}}) {
+		t.Fatalf("calls=%v", calls)
+	}
+}
