@@ -95,12 +95,62 @@ git commit -m "Capture Excel budgets for PV golden round trips"
 git push
 ```
 
-Keep `tmp/pv_goldens/` separately as the evidence bundle. Later, after those
-configs are pushed, run Mog from the planned new Mog branch:
+Keep `tmp/pv_goldens/` separately as the evidence bundle.
 
-```sh
-calipers verify --engine /path/to/calipers-mog --suite pv_goldens
+## Optional Windows Mog baseline (report only)
+
+After Excel budget capture, you may run all 107 cases with the current Mog
+checkout to see which pass, fail comparison, or error. Use an existing Mog
+checkout and its normal Windows Rust/MSVC build environment; no new Mog branch
+or fixes are needed for this diagnostic run. Record the tested revision and
+report any local modifications.
+
+From the **Calipers repository root**, replace `C:\path\to\mog` below with the
+Mog checkout path. Build Mog and its existing native Calipers adapter:
+
+```powershell
+$mogRoot = (Resolve-Path 'C:\path\to\mog').Path
+Push-Location $mogRoot
+try {
+    cargo build -p mog --locked --release
+    if ($LASTEXITCODE -ne 0) { throw 'Mog build failed; report the build error' }
+} finally {
+    Pop-Location
+}
+$env:MOG_BIN = (Resolve-Path "$mogRoot\target-native\release\mog.exe").Path
+go build -o tmp/pv_goldens/calipers-mog.exe "$mogRoot\scripts\calipers-mog\main.go"
+if ($LASTEXITCODE -ne 0) { throw 'Mog adapter build failed; report the build error' }
+git -C $mogRoot rev-parse HEAD | Tee-Object tmp/pv_goldens/mog-revision.log
+git -C $mogRoot status --short --branch | Tee-Object -Append tmp/pv_goldens/mog-revision.log
 ```
+
+The adapter forwards Calipers' `save --recalculate` request to Mog's CLI and
+uses `MOG_BIN` to find `mog.exe`. Use this native adapter as `--engine`; it is
+already part of the Mog repository.
+
+Run the comparison and keep its exit code, complete log, and exported workbooks.
+The Excel capture script has already built `tmp/pv_goldens/calipers.exe`:
+
+```powershell
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+.\tmp\pv_goldens\calipers.exe verify --engine .\tmp\pv_goldens\calipers-mog.exe --suite pv_goldens --out-dir tmp/pv_goldens/mog 2>&1 | Tee-Object tmp/pv_goldens/mog-verify.log
+$mogExit = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+"Mog verify exit code: $mogExit" | Tee-Object -Append tmp/pv_goldens/mog-verify.log
+```
+
+Expect a final `verify: N pass, M fail, K error` summary with counts totaling
+**107** and no skips. Exit 0 means all comparisons passed; exit 1 means there
+were comparison failures or execution/parse errors. A missing summary or fewer
+than 107 results is an incomplete run, not a passing baseline.
+
+Return `mog-revision.log`, `mog-verify.log`, and exports from
+`tmp/pv_goldens/mog/` for failing/error cases alongside the Excel evidence.
+Keep the Excel-measured configs: do not run `measure-budgets --engine` with Mog
+and overwrite them. **Report failures only; do not change Mog, goldens, inputs,
+comparison exceptions, or thresholds to make this baseline pass.** Mog fixes
+will happen later on a separate branch.
 
 The engine must implement `save --recalculate`. Calipers compares workbook
 semantics (cached values/types, formulas, styles, sheets, names, merges, freeze,
