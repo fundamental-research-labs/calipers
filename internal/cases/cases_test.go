@@ -754,10 +754,10 @@ func TestLoadRealCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := corpus.Cases
-	if n := len(all); n < 326 || n > 366 {
-		t.Fatalf("real corpus: got %d cases, want 326-366 (103 existing + 230-260 officejs)", n)
+	if n := len(all); n < 433 || n > 473 {
+		t.Fatalf("real corpus: got %d cases, want 433-473 (existing corpus + 107 PV goldens)", n)
 	}
-	wantSuites := "default,officejs,recalculate,roundtrip,scratch"
+	wantSuites := "default,officejs,pv_goldens,recalculate,roundtrip,scratch"
 	if strings.Join(corpus.Suites, ",") != wantSuites {
 		t.Fatalf("real corpus suites=%v, want %s", corpus.Suites, wantSuites)
 	}
@@ -796,9 +796,14 @@ func TestLoadRealCorpus(t *testing.T) {
 			t.Errorf("case %s must live under a suite directory, not %s", e.Name(), DirName)
 		}
 	}
-	var nRT, nDef, nScratch, nOfficejs, nRecalculate int
+	var nRT, nDef, nScratch, nOfficejs, nRecalculate, nPVGoldens int
 	for _, c := range all {
 		switch c.Suite {
+		case "pv_goldens":
+			nPVGoldens++
+			if !c.Recalculate || c.RunScript() {
+				t.Errorf("%s: expected unscripted recalculation", c.ID)
+			}
 		case "recalculate":
 			nRecalculate++
 			if !c.Recalculate || c.RunScript() {
@@ -850,7 +855,10 @@ func TestLoadRealCorpus(t *testing.T) {
 	if nOfficejs < 230 || nOfficejs > 260 {
 		t.Fatalf("officejs cases: %d, want 230-260", nOfficejs)
 	}
-	if len(all) != nRT+nDef+nScratch+nOfficejs+nRecalculate {
+	if nPVGoldens != 107 {
+		t.Fatalf("PV goldens: %d, want 107", nPVGoldens)
+	}
+	if len(all) != nRT+nDef+nScratch+nOfficejs+nRecalculate+nPVGoldens {
 		t.Fatalf("suite counts do not sum to corpus len %d", len(all))
 	}
 
@@ -934,8 +942,8 @@ func TestLoadRealCorpus(t *testing.T) {
 	}
 	uncapped := MissingBudget(all)
 	for _, c := range uncapped {
-		if c.Suite != "officejs" && c.Suite != "recalculate" {
-			t.Errorf("missing budget %s: only officejs/recalculate cases may lack config.json", c.ID)
+		if c.Suite != "officejs" && c.Suite != "recalculate" && c.Suite != "pv_goldens" {
+			t.Errorf("missing budget %s: only officejs/recalculate/pv_goldens cases may lack config.json", c.ID)
 		}
 	}
 	pendingSet := map[string]bool{}
@@ -946,7 +954,7 @@ func TestLoadRealCorpus(t *testing.T) {
 		if pendingSet[c.ID] {
 			continue
 		}
-		if c.Suite == "officejs" && (c.Budget == nil || c.ConfigPath == "") {
+		if (c.Suite == "officejs" || c.Suite == "pv_goldens") && (c.Budget == nil || c.ConfigPath == "") {
 			continue
 		}
 		if c.Budget == nil || c.Budget.MaxPeakMemoryBytes <= 0 || c.Budget.MaxDurationMs <= 0 {
@@ -1008,9 +1016,9 @@ func TestCommittedInitsAreWindowsExcel16Exports(t *testing.T) {
 		t.Fatal("no cases loaded")
 	}
 	for _, c := range all {
-		// Recalculation inputs must retain absent caches, so they are synthetic.
-		// Their ZIP/formula invariants are checked by gen-recalculate-cases.
-		if c.Suite == "recalculate" {
+		// Cache-free inputs must not be rewritten by Excel. Their invariants
+		// are checked by gen-recalculate-cases and gen-pv-golden-inits.
+		if c.Suite == "recalculate" || c.Suite == "pv_goldens" {
 			continue
 		}
 		if err := excel.CheckWindowsExcel16Export(c.InitPath); err != nil {
@@ -1029,8 +1037,9 @@ func TestCommittedOpenSaveGoldens(t *testing.T) {
 	var first golden.Meta
 	var firstID string
 	for _, c := range OpenSavePass(all) {
-		// New recalculation goldens are captured independently on Windows.
-		if c.Suite == "recalculate" {
+		// Recalculation goldens are captured independently; PV goldens are
+		// imported verbatim and checked against their source SHA-256 hashes.
+		if c.Suite == "recalculate" || c.Suite == "pv_goldens" {
 			continue
 		}
 		st, err := os.Stat(c.GoldenPath)

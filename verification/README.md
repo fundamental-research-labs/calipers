@@ -116,3 +116,12 @@ the existing memory/duration budgets and comparison settings. This policy is
 supported for unscripted cases and applies in verify, excel-save-pass, bench, and
 measure-budgets. Goldens still come exclusively from Windows Excel and record
 `recalculate: true` in their sidecars. The suite README covers capture and checks.
+
+## Imported PV golden round trips
+
+[`cases/pv_goldens`](cases/pv_goldens/README.md) contains 107 supplied reference
+workbooks and inputs derived by removing only worksheet formula-result caches.
+It inherits `recalculate: true` and uses the normal semantic verification path.
+Unlike locally generated goldens, these references stay byte-identical to the
+pinned source; do not use `excel-save-pass` to replace them. The suite README
+covers provenance, integrity checks, and Windows Excel budget capture.

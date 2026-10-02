@@ -124,6 +124,12 @@ COM `CalculateFullRebuild`; external engines must support `save --recalculate`.
 The suite includes five regression cases for Mog #401. Goldens and measured
 budgets await Windows capture; see its README and `scripts/capture-recalculate.ps1`.
 
+The [`pv_goldens` suite](verification/cases/pv_goldens/README.md) adds 107 imported
+reference workbooks with cache-free inputs derived solely from those goldens.
+It also requires full recalculation. Its Windows handoff measures budgets and
+verifies Excel against the preserved references; do not regenerate these goldens
+with `excel-save-pass`. See `scripts/capture-pv-goldens.ps1`.
+
 ## Bench (Excel vs Mog speed and memory)
 
 `calipers bench` walks the same committed-golden corpus as `verify`, **one case at a time**, and writes wall time plus peak working set for every case×engine into one JSON file. A case error is recorded and the series continues.
